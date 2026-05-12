@@ -1,0 +1,39 @@
+#!/bin/bash
+set -euxo pipefail
+
+export DEBIAN_FRONTEND=noninteractive
+
+apt-get update
+apt-get install -y ca-certificates curl gnupg git nginx rsync unzip build-essential
+
+install -m 0755 -d /etc/apt/keyrings
+curl -fsSL https://deb.nodesource.com/gpgkey/nodesource-repo.gpg.key \
+  | gpg --dearmor -o /etc/apt/keyrings/nodesource.gpg
+echo "deb [signed-by=/etc/apt/keyrings/nodesource.gpg] https://deb.nodesource.com/node_20.x nodistro main" \
+  > /etc/apt/sources.list.d/nodesource.list
+
+apt-get update
+apt-get install -y nodejs
+
+id -u ${deploy_user} >/dev/null 2>&1 || useradd --create-home --shell /bin/bash ${deploy_user}
+
+install -d -m 0700 -o ${deploy_user} -g ${deploy_user} /home/${deploy_user}/.ssh
+cat <<'EOF' > /home/${deploy_user}/.ssh/authorized_keys
+${ssh_public_key}
+EOF
+chown ${deploy_user}:${deploy_user} /home/${deploy_user}/.ssh/authorized_keys
+chmod 0600 /home/${deploy_user}/.ssh/authorized_keys
+
+cat <<'EOF' > /etc/sudoers.d/${deploy_user}
+${deploy_user} ALL=(ALL) NOPASSWD:ALL
+EOF
+chmod 0440 /etc/sudoers.d/${deploy_user}
+
+install -d -m 0755 -o ${deploy_user} -g ${deploy_user} /var/app/newpeople/releases
+install -d -m 0755 -o ${deploy_user} -g ${deploy_user} /var/app/newpeople/shared
+install -d -m 0755 -o ${deploy_user} -g ${deploy_user} /var/app/newpeople/shared/config
+install -d -m 0755 -o ${deploy_user} -g ${deploy_user} /var/app/newpeople/shared/log
+install -d -m 0755 -o ${deploy_user} -g ${deploy_user} /var/app/newpeople/shared/tmp
+
+systemctl enable nginx
+systemctl restart nginx
