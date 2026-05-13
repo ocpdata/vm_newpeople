@@ -1,25 +1,13 @@
 name: infra-vm
 
 on:
-  push:
-    branches:
-      - main
-    paths:
-      - terraform/**
-      - .github/workflows/infra-vm.yml
   workflow_dispatch:
-    inputs:
-      apply:
-        description: Apply Terraform after planning
-        required: true
-        default: false
-        type: boolean
 
 permissions:
   contents: read
 
 jobs:
-  terraform:
+  plan:
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -31,6 +19,7 @@ jobs:
       AWS_REGION: ${{ vars.AWS_REGION }}
       TF_TOKEN_app_terraform_io: ${{ secrets.TFC_TOKEN }}
       TF_VAR_aws_region: ${{ vars.AWS_REGION }}
+      TF_VAR_instance_type: ${{ vars.INSTANCE_TYPE }}
       TF_VAR_vpc_id: ${{ vars.VPC_ID }}
       TF_VAR_subnet_id: ${{ vars.SUBNET_ID }}
       TF_VAR_ssh_public_key: ${{ secrets.SSH_PUBLIC_KEY }}
@@ -63,10 +52,45 @@ jobs:
           name: terraform-plan
           path: terraform/tfplan
 
+  apply:
+    needs: plan
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        shell: bash
+        working-directory: terraform
+    env:
+      AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+      AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+      AWS_REGION: ${{ vars.AWS_REGION }}
+      TF_TOKEN_app_terraform_io: ${{ secrets.TFC_TOKEN }}
+      TF_VAR_aws_region: ${{ vars.AWS_REGION }}
+      TF_VAR_instance_type: ${{ vars.INSTANCE_TYPE }}
+      TF_VAR_vpc_id: ${{ vars.VPC_ID }}
+      TF_VAR_subnet_id: ${{ vars.SUBNET_ID }}
+      TF_VAR_ssh_public_key: ${{ secrets.SSH_PUBLIC_KEY }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+
+      - name: Download plan artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: terraform-plan
+          path: terraform
+
+      - name: Terraform init
+        run: |
+          terraform init \
+            -input=false \
+            -backend-config="organization=${{ vars.TFC_ORG }}" \
+            -backend-config="workspaces.name=${{ vars.TFC_WORKSPACE }}"
+
       - name: Terraform apply
-        if: github.event_name == 'workflow_dispatch' && inputs.apply == true
         run: terraform apply -input=false -auto-approve tfplan
 
       - name: Show public IP
-        if: github.event_name == 'workflow_dispatch' && inputs.apply == true
         run: terraform output -raw public_ip

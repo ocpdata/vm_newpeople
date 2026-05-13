@@ -73,7 +73,7 @@ resource "aws_instance" "vm" {
   instance_type               = var.instance_type
   subnet_id                   = var.subnet_id
   vpc_security_group_ids      = [aws_security_group.vm.id]
-  associate_public_ip_address = true
+  associate_public_ip_address = false
 
   user_data = templatefile("${path.module}/templates/cloud-init.sh.tftpl", {
     deploy_user    = var.deploy_user
@@ -93,4 +93,15 @@ resource "aws_instance" "vm" {
   }
 
   tags = merge(local.common_tags, { Name = var.name_prefix })
+}
+
+resource "aws_eip" "vm" {
+  domain = "vpc"
+
+  tags = merge(local.common_tags, { Name = "${var.name_prefix}-eip" })
+}
+
+resource "aws_eip_association" "vm" {
+  allocation_id = aws_eip.vm.id
+  instance_id   = aws_instance.vm.id
 }

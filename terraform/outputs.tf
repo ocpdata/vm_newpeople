@@ -5,12 +5,12 @@ output "instance_id" {
 
 output "public_ip" {
   description = "Public IP used by SSH and HTTP access."
-  value       = aws_instance.vm.public_ip
+  value       = aws_eip.vm.public_ip
 }
 
 output "public_dns" {
-  description = "Public DNS name of the EC2 instance."
-  value       = aws_instance.vm.public_dns
+  description = "Public DNS name associated with the Elastic IP."
+  value       = aws_eip.vm.public_dns
 }
 
 output "deploy_user" {
