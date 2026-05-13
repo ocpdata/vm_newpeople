@@ -21,23 +21,19 @@ Quedan fuera del alcance de Terraform en este repositorio:
 ```text
 terraform/                 Stack principal de Terraform
 scripts/                   Scripts usados por el workflow de despliegue
-.github/workflows/         Workflows `infra-vm` y `deploy-app`
+.github/workflows/         Workflow `infra-vm`
 ```
 
-## Workflows
+## Workflow
 
 ### `infra-vm`
 
-Hace plan sobre cambios en `main` y permite `apply` manual con `workflow_dispatch`.
+Hace `plan`, `apply` y despliegue de aplicacion en una sola ejecucion manual por `workflow_dispatch`.
 
 Usa estas variables/secrets:
 
 - Variables: `AWS_REGION`, `TFC_ORG`, `TFC_WORKSPACE`, `VPC_ID`, `SUBNET_ID`
 - Secrets: `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `TFC_TOKEN`, `SSH_PUBLIC_KEY`
-
-### `deploy-app`
-
-Hace checkout del repo `ocpdata/newpeople`, construye el frontend, empaqueta el release, lo copia por SSH a la VM y activa la aplicacion.
 
 Variables y secrets esperados para runtime:
 
@@ -51,9 +47,9 @@ Variables y secrets esperados para runtime:
 
 ## Flujo recomendado
 
-1. Ejecutar `infra-vm` con `apply=true` para crear la VM.
-2. Confirmar que la salida `public_ip` responde por SSH.
-3. Ejecutar `deploy-app` indicando el `app_ref` que quieres desplegar.
+1. Ejecutar `infra-vm` manualmente indicando el `app_ref` que quieres desplegar.
+2. El workflow hace `terraform plan` y `terraform apply`.
+3. Luego construye y despliega `ocpdata/newpeople` sobre la VM.
 4. Verificar `http://<ip-publica>/health`.
 
 ## Notas operativas
