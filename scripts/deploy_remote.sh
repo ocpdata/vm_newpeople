@@ -29,7 +29,7 @@ pushd "${release_root}" >/dev/null
 npm install
 popd >/dev/null
 
-api_port="$(grep '^PORT=' "${shared_env}" | cut -d= -f2-)"
+api_port="$(sudo grep '^PORT=' "${shared_env}" | cut -d= -f2-)"
 if [[ -z "${api_port}" ]]; then
   api_port="4000"
 fi
