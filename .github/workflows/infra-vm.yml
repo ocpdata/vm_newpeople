@@ -3,6 +3,11 @@ name: infra-vm
 on:
   workflow_dispatch:
     inputs:
+      app_repository:
+        description: Repository to deploy
+        required: true
+        default: ocpdata/newpeople
+        type: string
       app_ref:
         description: Git ref from ocpdata/newpeople to deploy
         required: true
@@ -156,7 +161,7 @@ jobs:
       - name: Checkout application repository
         uses: actions/checkout@v4
         with:
-          repository: ocpdata/newpeople
+          repository: ${{ inputs.app_repository }}
           ref: ${{ inputs.app_ref }}
           path: app-source
 
