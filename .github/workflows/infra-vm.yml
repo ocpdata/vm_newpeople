@@ -260,3 +260,17 @@ jobs:
             sleep 5
           done
           exit 1
+
+      - name: Collect remote diagnostics on failure
+        if: failure()
+        run: |
+          ssh -i ~/.ssh/id_rsa -o IdentitiesOnly=yes deployer@"$VM_HOST" '
+            echo "===== systemctl status ====="
+            sudo systemctl status newpeople-api --no-pager || true
+            echo "===== journalctl ====="
+            sudo journalctl -u newpeople-api -n 200 --no-pager || true
+            echo "===== nginx error log ====="
+            sudo tail -n 200 /var/log/nginx/error.log || true
+            echo "===== api env keys ====="
+            sudo sed -E "s/=.*/=<redacted>/" /var/app/newpeople/shared/config/api.env || true
+          '
