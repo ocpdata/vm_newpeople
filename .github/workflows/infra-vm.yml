@@ -41,10 +41,13 @@ jobs:
 
       - name: Terraform init
         run: |
+          cat > backend.remote.tfbackend <<EOF
+          organization = "${{ vars.TFC_ORG }}"
+          workspaces { name = "${{ vars.TFC_WORKSPACE }}" }
+          EOF
           terraform init \
             -input=false \
-            -backend-config="organization=${{ vars.TFC_ORG }}" \
-            -backend-config="workspaces.name=${{ vars.TFC_WORKSPACE }}"
+            -backend-config=backend.remote.tfbackend
 
       - name: Terraform validate
         run: terraform validate
@@ -90,10 +93,13 @@ jobs:
 
       - name: Terraform init
         run: |
+          cat > backend.remote.tfbackend <<EOF
+          organization = "${{ vars.TFC_ORG }}"
+          workspaces { name = "${{ vars.TFC_WORKSPACE }}" }
+          EOF
           terraform init \
             -input=false \
-            -backend-config="organization=${{ vars.TFC_ORG }}" \
-            -backend-config="workspaces.name=${{ vars.TFC_WORKSPACE }}"
+            -backend-config=backend.remote.tfbackend
 
       - name: Terraform apply
         run: terraform apply -input=false -auto-approve tfplan
@@ -193,10 +199,13 @@ jobs:
       - name: Resolve VM public IP from Terraform state
         working-directory: infra/terraform
         run: |
+          cat > backend.remote.tfbackend <<EOF
+          organization = "${{ vars.TFC_ORG }}"
+          workspaces { name = "${{ vars.TFC_WORKSPACE }}" }
+          EOF
           terraform init \
             -input=false \
-            -backend-config="organization=${{ vars.TFC_ORG }}" \
-            -backend-config="workspaces.name=${{ vars.TFC_WORKSPACE }}"
+            -backend-config=backend.remote.tfbackend
           host="$(terraform output -raw public_ip)"
           echo "VM_HOST=${host}" >> "$GITHUB_ENV"
 
