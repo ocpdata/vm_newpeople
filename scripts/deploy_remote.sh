@@ -30,6 +30,8 @@ npm install
 popd >/dev/null
 
 api_port="$(sudo grep '^PORT=' "${shared_env}" | cut -d= -f2-)"
+api_port="${api_port#\"}"
+api_port="${api_port%\"}"
 if [[ -z "${api_port}" ]]; then
   api_port="4000"
 fi
