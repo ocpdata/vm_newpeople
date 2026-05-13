@@ -34,6 +34,19 @@ jobs:
       TF_VAR_vpc_id: ${{ vars.VPC_ID }}
       TF_VAR_subnet_id: ${{ vars.SUBNET_ID }}
       TF_VAR_ssh_public_key: ${{ secrets.SSH_PUBLIC_KEY }}
+      TF_VAR_db_subnet_id_1: ${{ vars.DB_SUBNET_ID_1 }}
+      TF_VAR_db_subnet_id_2: ${{ vars.DB_SUBNET_ID_2 }}
+      TF_VAR_db_instance_class: ${{ vars.DB_INSTANCE_CLASS }}
+      TF_VAR_db_allocated_storage: ${{ vars.DB_ALLOCATED_STORAGE }}
+      TF_VAR_db_engine_version: ${{ vars.DB_ENGINE_VERSION }}
+      TF_VAR_db_name: ${{ vars.DB_NAME }}
+      TF_VAR_db_port: ${{ vars.DB_PORT }}
+      TF_VAR_db_username: ${{ secrets.DB_USER }}
+      TF_VAR_db_password: ${{ secrets.DB_PASSWORD }}
+      TF_VAR_db_multi_az: ${{ vars.DB_MULTI_AZ }}
+      TF_VAR_db_publicly_accessible: ${{ vars.DB_PUBLICLY_ACCESSIBLE }}
+      TF_VAR_db_deletion_protection: ${{ vars.DB_DELETION_PROTECTION }}
+      TF_VAR_db_skip_final_snapshot: ${{ vars.DB_SKIP_FINAL_SNAPSHOT }}
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -83,6 +96,19 @@ jobs:
       TF_VAR_vpc_id: ${{ vars.VPC_ID }}
       TF_VAR_subnet_id: ${{ vars.SUBNET_ID }}
       TF_VAR_ssh_public_key: ${{ secrets.SSH_PUBLIC_KEY }}
+      TF_VAR_db_subnet_id_1: ${{ vars.DB_SUBNET_ID_1 }}
+      TF_VAR_db_subnet_id_2: ${{ vars.DB_SUBNET_ID_2 }}
+      TF_VAR_db_instance_class: ${{ vars.DB_INSTANCE_CLASS }}
+      TF_VAR_db_allocated_storage: ${{ vars.DB_ALLOCATED_STORAGE }}
+      TF_VAR_db_engine_version: ${{ vars.DB_ENGINE_VERSION }}
+      TF_VAR_db_name: ${{ vars.DB_NAME }}
+      TF_VAR_db_port: ${{ vars.DB_PORT }}
+      TF_VAR_db_username: ${{ secrets.DB_USER }}
+      TF_VAR_db_password: ${{ secrets.DB_PASSWORD }}
+      TF_VAR_db_multi_az: ${{ vars.DB_MULTI_AZ }}
+      TF_VAR_db_publicly_accessible: ${{ vars.DB_PUBLICLY_ACCESSIBLE }}
+      TF_VAR_db_deletion_protection: ${{ vars.DB_DELETION_PROTECTION }}
+      TF_VAR_db_skip_final_snapshot: ${{ vars.DB_SKIP_FINAL_SNAPSHOT }}
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -125,6 +151,19 @@ jobs:
       TF_VAR_vpc_id: ${{ vars.VPC_ID }}
       TF_VAR_subnet_id: ${{ vars.SUBNET_ID }}
       TF_VAR_ssh_public_key: ${{ secrets.SSH_PUBLIC_KEY }}
+      TF_VAR_db_subnet_id_1: ${{ vars.DB_SUBNET_ID_1 }}
+      TF_VAR_db_subnet_id_2: ${{ vars.DB_SUBNET_ID_2 }}
+      TF_VAR_db_instance_class: ${{ vars.DB_INSTANCE_CLASS }}
+      TF_VAR_db_allocated_storage: ${{ vars.DB_ALLOCATED_STORAGE }}
+      TF_VAR_db_engine_version: ${{ vars.DB_ENGINE_VERSION }}
+      TF_VAR_db_name: ${{ vars.DB_NAME }}
+      TF_VAR_db_port: ${{ vars.DB_PORT }}
+      TF_VAR_db_username: ${{ secrets.DB_USER }}
+      TF_VAR_db_password: ${{ secrets.DB_PASSWORD }}
+      TF_VAR_db_multi_az: ${{ vars.DB_MULTI_AZ }}
+      TF_VAR_db_publicly_accessible: ${{ vars.DB_PUBLICLY_ACCESSIBLE }}
+      TF_VAR_db_deletion_protection: ${{ vars.DB_DELETION_PROTECTION }}
+      TF_VAR_db_skip_final_snapshot: ${{ vars.DB_SKIP_FINAL_SNAPSHOT }}
       PORT: ${{ vars.PORT }}
       JWT_SECRET: ${{ secrets.JWT_SECRET }}
       JWT_EXPIRES_IN: ${{ vars.JWT_EXPIRES_IN }}
@@ -135,7 +174,6 @@ jobs:
       SMTP_FROM: ${{ vars.SMTP_FROM }}
       SMTP_USER: ${{ secrets.SMTP_USER }}
       SMTP_PASS: ${{ secrets.SMTP_PASS }}
-      DB_HOST: ${{ vars.DB_HOST }}
       DB_PORT: ${{ vars.DB_PORT }}
       DB_NAME: ${{ vars.DB_NAME }}
       DB_POOL_SIZE: ${{ vars.DB_POOL_SIZE }}
@@ -192,16 +230,10 @@ jobs:
             -czf newpeople-release.tgz \
             -C app-source .
 
-      - name: Render runtime environment file
-        working-directory: infra
-        run: |
-          chmod +x scripts/render_runtime_env.sh
-          scripts/render_runtime_env.sh "$RUNNER_TEMP/newpeople-api.env"
-
       - name: Setup Terraform
         uses: hashicorp/setup-terraform@v3
 
-      - name: Resolve VM public IP from Terraform state
+      - name: Resolve VM and DB connection data from Terraform state
         working-directory: infra/terraform
         run: |
           cat > backend.remote.tfbackend <<EOF
@@ -212,7 +244,15 @@ jobs:
             -input=false \
             -backend-config=backend.remote.tfbackend
           host="$(terraform output -raw public_ip)"
+          db_host="$(terraform output -raw db_host)"
           echo "VM_HOST=${host}" >> "$GITHUB_ENV"
+          echo "DB_HOST=${db_host}" >> "$GITHUB_ENV"
+
+      - name: Render runtime environment file
+        working-directory: infra
+        run: |
+          chmod +x scripts/render_runtime_env.sh
+          scripts/render_runtime_env.sh "$RUNNER_TEMP/newpeople-api.env"
 
       - name: Configure SSH key
         run: |

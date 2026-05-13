@@ -48,3 +48,70 @@ variable "tags" {
   type        = map(string)
   default     = {}
 }
+
+variable "db_subnet_id_1" {
+  description = "First subnet ID for the RDS DB subnet group. Must be in the target VPC."
+  type        = string
+}
+
+variable "db_subnet_id_2" {
+  description = "Second subnet ID for the RDS DB subnet group. Must be in a different AZ within the target VPC."
+  type        = string
+}
+
+variable "db_instance_class" {
+  description = "RDS instance class for MySQL."
+  type        = string
+}
+
+variable "db_allocated_storage" {
+  description = "Allocated storage for the RDS instance in GiB."
+  type        = number
+}
+
+variable "db_engine_version" {
+  description = "MySQL engine version for the RDS instance."
+  type        = string
+}
+
+variable "db_name" {
+  description = "Initial database name created on the RDS instance."
+  type        = string
+}
+
+variable "db_port" {
+  description = "Port exposed by the RDS MySQL instance."
+  type        = number
+}
+
+variable "db_username" {
+  description = "Master username for the RDS MySQL instance."
+  type        = string
+  sensitive   = true
+}
+
+variable "db_password" {
+  description = "Master password for the RDS MySQL instance."
+  type        = string
+  sensitive   = true
+}
+
+variable "db_multi_az" {
+  description = "Whether to deploy the RDS instance in Multi-AZ mode."
+  type        = bool
+}
+
+variable "db_publicly_accessible" {
+  description = "Whether the RDS instance should have a public endpoint."
+  type        = bool
+}
+
+variable "db_deletion_protection" {
+  description = "Whether to enable deletion protection on the RDS instance."
+  type        = bool
+}
+
+variable "db_skip_final_snapshot" {
+  description = "Whether terraform destroy should skip taking a final snapshot."
+  type        = bool
+}

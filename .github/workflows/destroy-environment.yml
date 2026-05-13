@@ -1,0 +1,83 @@
+name: destroy-environment
+
+on:
+  workflow_dispatch:
+    inputs:
+      confirmation:
+        description: Type DELETE_ENVIRONMENT to confirm removal of the VM and RDS
+        required: true
+        type: string
+      terraform_workspace:
+        description: Type the Terraform Cloud workspace name to confirm the target state
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  destroy:
+    if: ${{ inputs.confirmation == 'DELETE_ENVIRONMENT' && inputs.terraform_workspace == vars.TFC_WORKSPACE }}
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        shell: bash
+        working-directory: terraform
+    env:
+      AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+      AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+      AWS_REGION: ${{ vars.AWS_REGION }}
+      TF_TOKEN_app_terraform_io: ${{ secrets.TFC_TOKEN }}
+      TF_VAR_aws_region: ${{ vars.AWS_REGION }}
+      TF_VAR_instance_type: ${{ vars.INSTANCE_TYPE }}
+      TF_VAR_vpc_id: ${{ vars.VPC_ID }}
+      TF_VAR_subnet_id: ${{ vars.SUBNET_ID }}
+      TF_VAR_ssh_public_key: ${{ secrets.SSH_PUBLIC_KEY }}
+      TF_VAR_db_subnet_id_1: ${{ vars.DB_SUBNET_ID_1 }}
+      TF_VAR_db_subnet_id_2: ${{ vars.DB_SUBNET_ID_2 }}
+      TF_VAR_db_instance_class: ${{ vars.DB_INSTANCE_CLASS }}
+      TF_VAR_db_allocated_storage: ${{ vars.DB_ALLOCATED_STORAGE }}
+      TF_VAR_db_engine_version: ${{ vars.DB_ENGINE_VERSION }}
+      TF_VAR_db_name: ${{ vars.DB_NAME }}
+      TF_VAR_db_port: ${{ vars.DB_PORT }}
+      TF_VAR_db_username: ${{ secrets.DB_USER }}
+      TF_VAR_db_password: ${{ secrets.DB_PASSWORD }}
+      TF_VAR_db_multi_az: ${{ vars.DB_MULTI_AZ }}
+      TF_VAR_db_publicly_accessible: ${{ vars.DB_PUBLICLY_ACCESSIBLE }}
+      TF_VAR_db_deletion_protection: ${{ vars.DB_DELETION_PROTECTION }}
+      TF_VAR_db_skip_final_snapshot: ${{ vars.DB_SKIP_FINAL_SNAPSHOT }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Show destructive scope
+        run: |
+          echo "This workflow destroys the full Terraform workspace state."
+          echo "Resources removed include the EC2 VM, elastic IP, security groups, and the RDS MySQL instance."
+          echo "Target Terraform Cloud workspace: ${{ vars.TFC_WORKSPACE }}"
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+
+      - name: Terraform init
+        run: |
+          cat > backend.remote.tfbackend <<EOF
+          organization = "${{ vars.TFC_ORG }}"
+          workspaces { name = "${{ vars.TFC_WORKSPACE }}" }
+          EOF
+          terraform init \
+            -input=false \
+            -backend-config=backend.remote.tfbackend
+
+      - name: Terraform destroy
+        run: terraform destroy -input=false -auto-approve
+
+  confirmation_failed:
+    if: ${{ !(inputs.confirmation == 'DELETE_ENVIRONMENT' && inputs.terraform_workspace == vars.TFC_WORKSPACE) }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Reject unsafe destroy request
+        run: |
+          echo "Destroy aborted."
+          echo "You must type DELETE_ENVIRONMENT and the exact Terraform workspace name (${{ vars.TFC_WORKSPACE }})." >&2
+          exit 1

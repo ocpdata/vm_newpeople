@@ -68,6 +68,61 @@ resource "aws_security_group" "vm" {
   tags = merge(local.common_tags, { Name = "${var.name_prefix}-sg" })
 }
 
+resource "aws_security_group" "rds" {
+  name        = "${var.name_prefix}-rds-sg"
+  description = "MySQL access for the NewPeople RDS instance"
+  vpc_id      = var.vpc_id
+
+  ingress {
+    description     = "MySQL from application VM"
+    from_port       = var.db_port
+    to_port         = var.db_port
+    protocol        = "tcp"
+    security_groups = [aws_security_group.vm.id]
+  }
+
+  egress {
+    description = "Allow outbound traffic"
+    from_port   = 0
+    to_port     = 0
+    protocol    = "-1"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+
+  tags = merge(local.common_tags, { Name = "${var.name_prefix}-rds-sg" })
+}
+
+resource "aws_db_subnet_group" "rds" {
+  name       = "${var.name_prefix}-db-subnets"
+  subnet_ids = [var.db_subnet_id_1, var.db_subnet_id_2]
+
+  tags = merge(local.common_tags, { Name = "${var.name_prefix}-db-subnets" })
+}
+
+resource "aws_db_instance" "mysql" {
+  identifier              = "${var.name_prefix}-mysql"
+  engine                  = "mysql"
+  engine_version          = var.db_engine_version
+  instance_class          = var.db_instance_class
+  allocated_storage       = var.db_allocated_storage
+  storage_type            = "gp3"
+  storage_encrypted       = true
+  db_name                 = var.db_name
+  username                = var.db_username
+  password                = var.db_password
+  port                    = var.db_port
+  db_subnet_group_name    = aws_db_subnet_group.rds.name
+  vpc_security_group_ids  = [aws_security_group.rds.id]
+  multi_az                = var.db_multi_az
+  publicly_accessible     = var.db_publicly_accessible
+  deletion_protection     = var.db_deletion_protection
+  skip_final_snapshot     = var.db_skip_final_snapshot
+  backup_retention_period = 7
+  apply_immediately       = true
+
+  tags = merge(local.common_tags, { Name = "${var.name_prefix}-mysql" })
+}
+
 resource "aws_instance" "vm" {
   ami                         = data.aws_ami.ubuntu.id
   instance_type               = var.instance_type
