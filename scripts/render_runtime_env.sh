@@ -46,7 +46,7 @@ case "${DOCUMENT_STORAGE_PROVIDER}" in
       exit 1
     fi
     ;;
-  s3)
+  s3|s3_compatible)
     storage_vars=(
       DOCUMENT_STORAGE_S3_BUCKET
       DOCUMENT_STORAGE_S3_REGION
@@ -104,7 +104,7 @@ case "${DOCUMENT_STORAGE_PROVIDER}" in
   local)
     write_pair "DOCUMENT_STORAGE_LOCAL_ROOT" "$DOCUMENT_STORAGE_LOCAL_ROOT"
     ;;
-  s3)
+  s3|s3_compatible)
     write_pair "DOCUMENT_STORAGE_S3_BUCKET" "$DOCUMENT_STORAGE_S3_BUCKET"
     write_pair "DOCUMENT_STORAGE_S3_REGION" "$DOCUMENT_STORAGE_S3_REGION"
     write_pair "DOCUMENT_STORAGE_S3_FORCE_PATH_STYLE" "$DOCUMENT_STORAGE_S3_FORCE_PATH_STYLE"
