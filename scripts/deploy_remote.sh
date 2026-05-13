@@ -23,9 +23,7 @@ sudo mkdir -p "${release_root}"
 sudo tar -xzf "${archive_path}" -C "${release_root}"
 sudo chown -R "$USER":"$USER" "${release_root}"
 
-cp "${env_path}" /tmp/newpeople-api.env
-sudo install -m 0600 -o root -g root /tmp/newpeople-api.env "${shared_env}"
-rm -f /tmp/newpeople-api.env
+sudo install -m 0600 -o root -g root "${env_path}" "${shared_env}"
 
 pushd "${release_root}" >/dev/null
 npm install
