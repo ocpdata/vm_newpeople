@@ -19,6 +19,16 @@ service_path="/etc/systemd/system/newpeople-api.service"
 nginx_site="/etc/nginx/sites-available/newpeople.conf"
 nginx_enabled="/etc/nginx/sites-enabled/newpeople.conf"
 
+read_env_value() {
+  local key="$1"
+  local value
+
+  value="$(sudo grep "^${key}=" "${shared_env}" | cut -d= -f2- || true)"
+  value="${value#\"}"
+  value="${value%\"}"
+  printf '%s' "$value"
+}
+
 sudo mkdir -p "${release_root}"
 sudo tar -xzf "${archive_path}" -C "${release_root}"
 sudo chown -R "$USER":"$USER" "${release_root}"
@@ -28,6 +38,36 @@ sudo install -m 0600 -o root -g root "${env_path}" "${shared_env}"
 pushd "${release_root}" >/dev/null
 npm install
 popd >/dev/null
+
+db_host="$(read_env_value DB_HOST)"
+db_port="$(read_env_value DB_PORT)"
+db_name="$(read_env_value DB_NAME)"
+db_user="$(read_env_value DB_USER)"
+db_password="$(read_env_value DB_PASSWORD)"
+
+if [[ -z "${db_host}" || -z "${db_port}" || -z "${db_name}" || -z "${db_user}" ]]; then
+  echo "Missing DB connection values in ${shared_env}" >&2
+  exit 1
+fi
+
+if [[ ! "${db_name}" =~ ^[A-Za-z0-9_]+$ ]]; then
+  echo "Unsupported DB_NAME value: ${db_name}" >&2
+  exit 1
+fi
+
+if ! command -v mysql >/dev/null 2>&1; then
+  sudo apt-get update
+  sudo apt-get install -y mysql-client
+fi
+
+schema_temp="$(mktemp)"
+trap 'rm -f "${schema_temp}"' EXIT
+sed "s/newpeople_crm/${db_name}/g" "${release_root}/apps/api/sql/schema.sql" > "${schema_temp}"
+MYSQL_PWD="${db_password}" mysql \
+  --host="${db_host}" \
+  --port="${db_port}" \
+  --user="${db_user}" \
+  < "${schema_temp}"
 
 api_port="$(sudo grep '^PORT=' "${shared_env}" | cut -d= -f2-)"
 api_port="${api_port#\"}"
