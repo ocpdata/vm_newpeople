@@ -221,17 +221,34 @@ jobs:
           chmod 600 ~/.ssh/id_rsa
           ssh-keyscan -H "$VM_HOST" >> ~/.ssh/known_hosts
 
+      - name: Wait for deployer SSH access
+        run: |
+          for attempt in {1..24}; do
+            if ssh \
+              -i ~/.ssh/id_rsa \
+              -o BatchMode=yes \
+              -o IdentitiesOnly=yes \
+              -o ConnectTimeout=10 \
+              deployer@"$VM_HOST" "echo ready"; then
+              exit 0
+            fi
+            echo "Waiting for cloud-init to finish and enable deployer SSH access..."
+            sleep 10
+          done
+          echo "Timed out waiting for deployer SSH access" >&2
+          exit 1
+
       - name: Copy release and scripts to VM
         run: |
           release_id="${GITHUB_RUN_NUMBER}-${GITHUB_SHA::7}"
           echo "RELEASE_ID=${release_id}" >> "$GITHUB_ENV"
-          scp -i ~/.ssh/id_rsa newpeople-release.tgz deployer@"$VM_HOST":/tmp/newpeople-release.tgz
-          scp -i ~/.ssh/id_rsa "$RUNNER_TEMP/newpeople-api.env" deployer@"$VM_HOST":/tmp/newpeople-api.env
-          scp -i ~/.ssh/id_rsa infra/scripts/deploy_remote.sh deployer@"$VM_HOST":/tmp/deploy_remote.sh
+          scp -i ~/.ssh/id_rsa -o IdentitiesOnly=yes newpeople-release.tgz deployer@"$VM_HOST":/tmp/newpeople-release.tgz
+          scp -i ~/.ssh/id_rsa -o IdentitiesOnly=yes "$RUNNER_TEMP/newpeople-api.env" deployer@"$VM_HOST":/tmp/newpeople-api.env
+          scp -i ~/.ssh/id_rsa -o IdentitiesOnly=yes infra/scripts/deploy_remote.sh deployer@"$VM_HOST":/tmp/deploy_remote.sh
 
       - name: Run remote deployment
         run: |
-          ssh -i ~/.ssh/id_rsa deployer@"$VM_HOST" \
+          ssh -i ~/.ssh/id_rsa -o IdentitiesOnly=yes deployer@"$VM_HOST" \
             "chmod +x /tmp/deploy_remote.sh && /tmp/deploy_remote.sh /tmp/newpeople-release.tgz /tmp/newpeople-api.env $RELEASE_ID"
 
       - name: Validate healthcheck
