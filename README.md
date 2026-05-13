@@ -21,14 +21,18 @@ Quedan fuera del alcance de Terraform en este repositorio:
 ```text
 terraform/                 Stack principal de Terraform
 scripts/                   Scripts usados por el workflow de despliegue
-.github/workflows/         Workflow `infra-vm`
+.github/workflows/         Workflows `infra-vm` y `destroy-vm`
 ```
 
-## Workflow
+## Workflows
 
 ### `infra-vm`
 
 Hace `plan`, `apply` y despliegue de aplicacion en una sola ejecucion manual por `workflow_dispatch`.
+
+### `destroy-vm`
+
+Hace `terraform destroy` manual sobre el mismo workspace de Terraform Cloud para eliminar la infraestructura de la VM.
 
 Usa estas variables/secrets:
 
@@ -51,6 +55,7 @@ Variables y secrets esperados para runtime:
 2. El workflow hace `terraform plan` y `terraform apply`.
 3. Luego construye y despliega `ocpdata/newpeople` sobre la VM.
 4. Verificar `http://<ip-publica>/health`.
+5. Cuando quieras desmontar el entorno, ejecutar `destroy-vm` manualmente.
 
 ## Notas operativas
 
