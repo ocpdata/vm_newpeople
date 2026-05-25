@@ -29,6 +29,31 @@ read_env_value() {
   printf '%s' "$value"
 }
 
+print_service_diagnostics() {
+  echo "===== systemctl status =====" >&2
+  sudo systemctl status newpeople-api --no-pager >&2 || true
+  echo "===== journalctl =====" >&2
+  sudo journalctl -u newpeople-api -n 200 --no-pager >&2 || true
+}
+
+wait_for_local_health() {
+  local health_url="$1"
+
+  for attempt in {1..12}; do
+    if curl --fail --show-error --silent "$health_url"; then
+      echo >&2
+      return 0
+    fi
+
+    echo "Waiting for API healthcheck on ${health_url} (attempt ${attempt}/12)..." >&2
+    sleep 5
+  done
+
+  echo "API healthcheck did not become ready on ${health_url}" >&2
+  print_service_diagnostics
+  return 1
+}
+
 sudo mkdir -p "${release_root}"
 sudo tar -xzf "${archive_path}" -C "${release_root}"
 sudo chown -R "$USER":"$USER" "${release_root}"
@@ -135,5 +160,6 @@ sudo rm -f /etc/nginx/sites-enabled/default
 sudo systemctl daemon-reload
 sudo systemctl enable newpeople-api
 sudo systemctl restart newpeople-api
+wait_for_local_health "http://127.0.0.1:${api_port}/health"
 sudo nginx -t
 sudo systemctl reload nginx

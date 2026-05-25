@@ -293,9 +293,28 @@ jobs:
 
       - name: Validate healthcheck
         run: |
+          body_file="$(mktemp)"
+          trap 'rm -f "$body_file"' EXIT
+
           for attempt in {1..12}; do
-            if curl --fail --show-error --silent "http://$VM_HOST/health"; then
+            http_code="$({
+              curl \
+                --silent \
+                --show-error \
+                --output "$body_file" \
+                --write-out '%{http_code}' \
+                "http://$VM_HOST/health"
+            } || true)"
+
+            if [[ "$http_code" == "200" ]]; then
+              cat "$body_file"
               exit 0
+            fi
+
+            echo "External healthcheck attempt ${attempt}/12 returned HTTP ${http_code:-curl-error}" >&2
+            if [[ -s "$body_file" ]]; then
+              echo "Response body:" >&2
+              cat "$body_file" >&2
             fi
             sleep 5
           done
