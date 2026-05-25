@@ -29,6 +29,100 @@ read_env_value() {
   printf '%s' "$value"
 }
 
+run_mysql_database_sql() {
+  local sql="$1"
+
+  MYSQL_PWD="${db_password}" mysql \
+    --host="${db_host}" \
+    --port="${db_port}" \
+    --user="${db_user}" \
+    "${db_name}" <<EOF
+${sql}
+EOF
+}
+
+ensure_proposal_schema_compatibility() {
+  run_mysql_database_sql "
+CREATE TABLE IF NOT EXISTS proposal_templates (
+  id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+  code VARCHAR(80) NOT NULL,
+  name VARCHAR(180) NOT NULL,
+  status VARCHAR(40) NOT NULL DEFAULT 'draft',
+  scope VARCHAR(40) NOT NULL DEFAULT 'global',
+  description TEXT NULL,
+  preview_title VARCHAR(180) NULL,
+  cover_style VARCHAR(40) NOT NULL DEFAULT 'corporate',
+  theme_tokens_json LONGTEXT NULL,
+  content_defaults_json LONGTEXT NULL,
+  section_schema_json LONGTEXT NULL,
+  highlight_presets_json LONGTEXT NULL,
+  placeholder_rules_json LONGTEXT NULL,
+  is_default TINYINT(1) NOT NULL DEFAULT 0,
+  created_by_user_id BIGINT UNSIGNED NULL,
+  updated_by_user_id BIGINT UNSIGNED NULL,
+  created_at DATETIME(3) NOT NULL DEFAULT NOW(3),
+  updated_at DATETIME(3) NOT NULL DEFAULT NOW(3),
+  CONSTRAINT uq_proposal_templates_code UNIQUE (code),
+  INDEX idx_proposal_templates_status (status, is_default, updated_at),
+  CONSTRAINT fk_proposal_templates_created_by FOREIGN KEY (created_by_user_id) REFERENCES users(id),
+  CONSTRAINT fk_proposal_templates_updated_by FOREIGN KEY (updated_by_user_id) REFERENCES users(id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS proposals (
+  id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+  quotation_id BIGINT UNSIGNED NOT NULL,
+  quotation_version_id BIGINT UNSIGNED NOT NULL,
+  account_id BIGINT UNSIGNED NOT NULL,
+  contact_id BIGINT UNSIGNED NOT NULL,
+  opportunity_id BIGINT UNSIGNED NOT NULL,
+  owner_user_id BIGINT UNSIGNED NOT NULL,
+  template_id BIGINT UNSIGNED NULL,
+  title VARCHAR(180) NOT NULL,
+  status_code VARCHAR(40) NOT NULL DEFAULT 'active',
+  content_json LONGTEXT NULL,
+  pricing_snapshot_json LONGTEXT NULL,
+  template_snapshot_json LONGTEXT NULL,
+  created_by_user_id BIGINT UNSIGNED NOT NULL,
+  updated_by_user_id BIGINT UNSIGNED NOT NULL,
+  created_at DATETIME(3) NOT NULL DEFAULT NOW(3),
+  updated_at DATETIME(3) NOT NULL DEFAULT NOW(3),
+  archived_at DATETIME(3) NULL,
+  CONSTRAINT fk_proposals_quotation FOREIGN KEY (quotation_id) REFERENCES quotations(id) ON DELETE CASCADE,
+  CONSTRAINT fk_proposals_quotation_version FOREIGN KEY (quotation_version_id) REFERENCES quotation_versions(id) ON DELETE CASCADE,
+  CONSTRAINT fk_proposals_account FOREIGN KEY (account_id) REFERENCES accounts(id),
+  CONSTRAINT fk_proposals_contact FOREIGN KEY (contact_id) REFERENCES contacts(id),
+  CONSTRAINT fk_proposals_opportunity FOREIGN KEY (opportunity_id) REFERENCES opportunities(id),
+  CONSTRAINT fk_proposals_owner FOREIGN KEY (owner_user_id) REFERENCES users(id),
+  CONSTRAINT fk_proposals_template FOREIGN KEY (template_id) REFERENCES proposal_templates(id) ON DELETE SET NULL,
+  CONSTRAINT fk_proposals_created_by FOREIGN KEY (created_by_user_id) REFERENCES users(id),
+  CONSTRAINT fk_proposals_updated_by FOREIGN KEY (updated_by_user_id) REFERENCES users(id),
+  INDEX idx_proposals_quotation (quotation_id, created_at),
+  INDEX idx_proposals_quotation_version (quotation_version_id),
+  INDEX idx_proposals_owner (owner_user_id, updated_at),
+  INDEX idx_proposals_status (status_code, updated_at)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS proposal_revisions (
+  id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+  proposal_id BIGINT UNSIGNED NOT NULL,
+  revision_number INT NOT NULL,
+  quotation_version_id BIGINT UNSIGNED NOT NULL,
+  title VARCHAR(180) NOT NULL,
+  status_code VARCHAR(40) NOT NULL,
+  content_json LONGTEXT NULL,
+  pricing_snapshot_json LONGTEXT NULL,
+  change_type VARCHAR(40) NOT NULL,
+  created_by_user_id BIGINT UNSIGNED NOT NULL,
+  created_at DATETIME(3) NOT NULL DEFAULT NOW(3),
+  CONSTRAINT fk_proposal_revisions_proposal FOREIGN KEY (proposal_id) REFERENCES proposals(id) ON DELETE CASCADE,
+  CONSTRAINT fk_proposal_revisions_quotation_version FOREIGN KEY (quotation_version_id) REFERENCES quotation_versions(id) ON DELETE CASCADE,
+  CONSTRAINT fk_proposal_revisions_created_by FOREIGN KEY (created_by_user_id) REFERENCES users(id),
+  CONSTRAINT uq_proposal_revisions_number UNIQUE (proposal_id, revision_number),
+  INDEX idx_proposal_revisions_created_at (proposal_id, created_at)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+"
+}
+
 print_service_diagnostics() {
   echo "===== systemctl status =====" >&2
   sudo systemctl status newpeople-api --no-pager >&2 || true
@@ -93,6 +187,7 @@ MYSQL_PWD="${db_password}" mysql \
   --port="${db_port}" \
   --user="${db_user}" \
   < "${schema_temp}"
+ensure_proposal_schema_compatibility
 
 api_port="$(sudo grep '^PORT=' "${shared_env}" | cut -d= -f2-)"
 api_port="${api_port#\"}"
