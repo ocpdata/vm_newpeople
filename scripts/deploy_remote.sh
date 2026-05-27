@@ -220,6 +220,7 @@ server {
     listen 80;
     listen [::]:80;
     server_name _;
+  client_max_body_size 50m;
 
     root ${current_link}/apps/web/dist;
     index index.html;
