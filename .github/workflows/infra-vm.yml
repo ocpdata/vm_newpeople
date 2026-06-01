@@ -245,6 +245,19 @@ jobs:
             -backend-config=backend.remote.tfbackend
           host="$(terraform output -raw public_ip)"
           db_host="$(terraform output -raw db_host)"
+
+          if [[ -z "${host}" ]]; then
+            echo "::error::Terraform output 'public_ip' is empty. Cannot continue deploy without VM_HOST." >&2
+            terraform output || true
+            exit 1
+          fi
+
+          if [[ -z "${db_host}" ]]; then
+            echo "::error::Terraform output 'db_host' is empty. Cannot continue deploy without DB_HOST." >&2
+            terraform output || true
+            exit 1
+          fi
+
           echo "VM_HOST=${host}" >> "$GITHUB_ENV"
           echo "DB_HOST=${db_host}" >> "$GITHUB_ENV"
 
@@ -255,9 +268,21 @@ jobs:
           scripts/render_runtime_env.sh "$RUNNER_TEMP/newpeople-api.env"
 
       - name: Configure SSH key
+        env:
+          SSH_PRIVATE_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
         run: |
+          if [[ -z "${VM_HOST:-}" ]]; then
+            echo "::error::VM_HOST is empty. Terraform did not return a valid public IP." >&2
+            exit 1
+          fi
+
+          if [[ -z "${SSH_PRIVATE_KEY:-}" ]]; then
+            echo "::error::Missing required secret SSH_PRIVATE_KEY." >&2
+            exit 1
+          fi
+
           mkdir -p ~/.ssh
-          printf '%s\n' "${{ secrets.SSH_PRIVATE_KEY }}" > ~/.ssh/id_rsa
+          printf '%s\n' "${SSH_PRIVATE_KEY}" > ~/.ssh/id_rsa
           chmod 600 ~/.ssh/id_rsa
           ssh-keyscan -H "$VM_HOST" >> ~/.ssh/known_hosts
 
@@ -322,8 +347,26 @@ jobs:
 
       - name: Collect remote diagnostics on failure
         if: failure()
+        env:
+          SSH_PRIVATE_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
         run: |
-          ssh -i ~/.ssh/id_rsa -o IdentitiesOnly=yes deployer@"$VM_HOST" '
+          if [[ -z "${VM_HOST:-}" ]]; then
+            echo "Skipping remote diagnostics: VM_HOST is empty (earlier step likely failed before host resolution)."
+            exit 0
+          fi
+
+          if [[ ! -f ~/.ssh/id_rsa ]]; then
+            if [[ -z "${SSH_PRIVATE_KEY:-}" ]]; then
+              echo "Skipping remote diagnostics: SSH private key is unavailable in this step."
+              exit 0
+            fi
+            mkdir -p ~/.ssh
+            printf '%s\n' "${SSH_PRIVATE_KEY}" > ~/.ssh/id_rsa
+            chmod 600 ~/.ssh/id_rsa
+            ssh-keyscan -H "$VM_HOST" >> ~/.ssh/known_hosts 2>/dev/null || true
+          fi
+
+          ssh -i ~/.ssh/id_rsa -o BatchMode=yes -o IdentitiesOnly=yes -o ConnectTimeout=15 deployer@"$VM_HOST" '
             echo "===== systemctl status ====="
             sudo systemctl status newpeople-api --no-pager || true
             echo "===== journalctl ====="
@@ -332,4 +375,4 @@ jobs:
             sudo tail -n 200 /var/log/nginx/error.log || true
             echo "===== api env keys ====="
             sudo sed -E "s/=.*/=<redacted>/" /var/app/newpeople/shared/config/api.env || true
-          '
+          ' || true
