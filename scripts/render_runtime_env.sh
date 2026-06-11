@@ -12,6 +12,7 @@ required_vars=(
   PORT
   JWT_SECRET
   JWT_EXPIRES_IN
+  APP_BASE_URL
   APP_INVITE_SETUP_URL
   SMTP_HOST
   SMTP_PORT
@@ -30,6 +31,7 @@ required_vars=(
   OPENAI_ENABLE_WEB_SEARCH
   OPENAI_API_KEY
   DOCUMENT_STORAGE_PROVIDER
+  AUTH_GOOGLE_ENABLED
 )
 
 for var_name in "${required_vars[@]}"; do
@@ -116,3 +118,20 @@ case "${DOCUMENT_STORAGE_PROVIDER}" in
     fi
     ;;
 esac
+
+write_pair "APP_BASE_URL" "$APP_BASE_URL"
+write_pair "AUTH_GOOGLE_ENABLED" "$AUTH_GOOGLE_ENABLED"
+
+if [[ "${AUTH_GOOGLE_ENABLED}" == "true" ]]; then
+  google_vars=(GOOGLE_CLIENT_ID GOOGLE_REDIRECT_URI GOOGLE_CLIENT_SECRET)
+  for var_name in "${google_vars[@]}"; do
+    if [[ -z "${!var_name:-}" ]]; then
+      echo "Missing required environment variable: ${var_name}" >&2
+      exit 1
+    fi
+  done
+
+  write_pair "GOOGLE_CLIENT_ID" "$GOOGLE_CLIENT_ID"
+  write_pair "GOOGLE_REDIRECT_URI" "$GOOGLE_REDIRECT_URI"
+  write_pair "GOOGLE_CLIENT_SECRET" "$GOOGLE_CLIENT_SECRET"
+fi

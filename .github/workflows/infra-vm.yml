@@ -190,6 +190,11 @@ jobs:
       DOCUMENT_STORAGE_S3_ACCESS_KEY_ID: ${{ secrets.DOCUMENT_STORAGE_S3_ACCESS_KEY_ID }}
       DOCUMENT_STORAGE_S3_SECRET_ACCESS_KEY: ${{ secrets.DOCUMENT_STORAGE_S3_SECRET_ACCESS_KEY }}
       VITE_API_URL: ${{ vars.VITE_API_URL }}
+      APP_BASE_URL: ${{ vars.APP_BASE_URL }}
+      AUTH_GOOGLE_ENABLED: ${{ vars.AUTH_GOOGLE_ENABLED }}
+      GOOGLE_CLIENT_ID: ${{ vars.GOOGLE_CLIENT_ID }}
+      GOOGLE_REDIRECT_URI: ${{ vars.GOOGLE_REDIRECT_URI }}
+      GOOGLE_CLIENT_SECRET: ${{ secrets.GOOGLE_CLIENT_SECRET }}
     steps:
       - name: Checkout infrastructure repository
         uses: actions/checkout@v4
