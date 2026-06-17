@@ -165,6 +165,7 @@ jobs:
       TF_VAR_db_deletion_protection: ${{ vars.DB_DELETION_PROTECTION }}
       TF_VAR_db_skip_final_snapshot: ${{ vars.DB_SKIP_FINAL_SNAPSHOT }}
       PORT: ${{ vars.PORT }}
+      TZ: America/Mexico_City
       JWT_SECRET: ${{ secrets.JWT_SECRET }}
       JWT_EXPIRES_IN: ${{ vars.JWT_EXPIRES_IN }}
       APP_INVITE_SETUP_URL: ${{ vars.APP_INVITE_SETUP_URL }}
@@ -320,6 +321,27 @@ jobs:
         run: |
           ssh -i ~/.ssh/id_rsa -o IdentitiesOnly=yes deployer@"$VM_HOST" \
             "chmod +x /tmp/deploy_remote.sh && /tmp/deploy_remote.sh /tmp/newpeople-release.tgz /tmp/newpeople-api.env $RELEASE_ID"
+
+      - name: Verify API timezone in VM
+        run: |
+          service_tz="$(ssh -i ~/.ssh/id_rsa -o IdentitiesOnly=yes deployer@"$VM_HOST" \
+            "set -euo pipefail; pid=\$(sudo systemctl show -p MainPID --value newpeople-api); sudo tr '\\0' '\\n' < /proc/\"\$pid\"/environ | grep '^TZ=' | cut -d= -f2")"
+
+          command_tz="$(ssh -i ~/.ssh/id_rsa -o IdentitiesOnly=yes deployer@"$VM_HOST" \
+            "set -euo pipefail; source /var/app/newpeople/shared/config/api.env; node -e \"console.log(Intl.DateTimeFormat().resolvedOptions().timeZone)\"")"
+
+          echo "Service TZ: ${service_tz}"
+          echo "Node command TZ: ${command_tz}"
+
+          if [[ "${service_tz}" != "America/Mexico_City" ]]; then
+            echo "::error::newpeople-api service TZ is '${service_tz}', expected 'America/Mexico_City'." >&2
+            exit 1
+          fi
+
+          if [[ "${command_tz}" != "America/Mexico_City" ]]; then
+            echo "::error::node timezone output is '${command_tz}', expected 'America/Mexico_City'." >&2
+            exit 1
+          fi
 
       - name: Validate healthcheck
         run: |

@@ -10,6 +10,7 @@ output_file="$1"
 
 required_vars=(
   PORT
+  TZ
   JWT_SECRET
   JWT_EXPIRES_IN
   APP_BASE_URL
@@ -81,6 +82,7 @@ write_pair() {
 : > "$output_file"
 
 write_pair "PORT" "$PORT"
+write_pair "TZ" "$TZ"
 write_pair "JWT_SECRET" "$JWT_SECRET"
 write_pair "JWT_EXPIRES_IN" "$JWT_EXPIRES_IN"
 write_pair "APP_INVITE_SETUP_URL" "$APP_INVITE_SETUP_URL"
