@@ -328,7 +328,7 @@ jobs:
             "set -euo pipefail; pid=\$(sudo systemctl show -p MainPID --value newpeople-api); sudo tr '\\0' '\\n' < /proc/\"\$pid\"/environ | grep '^TZ=' | cut -d= -f2")"
 
           command_tz="$(ssh -i ~/.ssh/id_rsa -o IdentitiesOnly=yes deployer@"$VM_HOST" \
-            "set -euo pipefail; sudo bash -lc 'set -euo pipefail; source /var/app/newpeople/shared/config/api.env; node -e \"console.log(Intl.DateTimeFormat().resolvedOptions().timeZone)\"'")"
+            "set -euo pipefail; sudo bash -lc 'set -euo pipefail; set -a; source /var/app/newpeople/shared/config/api.env; set +a; node -e \"console.log(Intl.DateTimeFormat().resolvedOptions().timeZone)\"'")"
 
           echo "Service TZ: ${service_tz}"
           echo "Node command TZ: ${command_tz}"
