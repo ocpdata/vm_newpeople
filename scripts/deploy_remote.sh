@@ -179,14 +179,9 @@ if ! command -v mysql >/dev/null 2>&1; then
   sudo apt-get install -y mysql-client
 fi
 
-schema_temp="$(mktemp)"
-trap 'rm -f "${schema_temp}"' EXIT
-sed "s/newpeople_crm/${db_name}/g" "${release_root}/apps/api/sql/schema.sql" > "${schema_temp}"
-MYSQL_PWD="${db_password}" mysql \
-  --host="${db_host}" \
-  --port="${db_port}" \
-  --user="${db_user}" \
-  < "${schema_temp}"
+# IMPORTANT:
+# Do not run apps/api/sql/schema.sql during regular deployments.
+# Schema bootstrap must be a manual, one-time operation for new databases.
 ensure_proposal_schema_compatibility
 
 api_port="$(sudo grep '^PORT=' "${shared_env}" | cut -d= -f2-)"

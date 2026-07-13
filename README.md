@@ -57,8 +57,11 @@ Variables y secrets esperados para runtime:
 2. El workflow hace `terraform plan` y `terraform apply`.
 3. Luego construye y despliega `ocpdata/newpeople` sobre la VM.
 4. El workflow resuelve el endpoint de RDS desde Terraform y lo inyecta como `DB_HOST` en tiempo de despliegue.
-5. Verificar `http://<ip-publica>/health`.
-6. Cuando quieras desmontar el entorno, ejecutar `destroy-environment` manualmente y confirmar el borrado del workspace y de la base RDS.
+5. Para una base nueva, ejecutar bootstrap de esquema una sola vez de forma manual en la VM:
+Comando: `sudo bash /var/app/newpeople/current/scripts/bootstrap_schema_manual.sh /var/app/newpeople/current /var/app/newpeople/shared/config/api.env`
+Este paso NO se ejecuta automaticamente durante deploys.
+6. Verificar `http://<ip-publica>/health`.
+7. Cuando quieras desmontar el entorno, ejecutar `destroy-environment` manualmente y confirmar el borrado del workspace y de la base RDS.
 
 ## Notas operativas
 
@@ -66,3 +69,4 @@ Variables y secrets esperados para runtime:
 - `JWT_SECRET` debe vivir en GitHub Secrets y no debe usar valores de ejemplo.
 - El workflow asume que `ocpdata/newpeople` es accesible desde GitHub Actions.
 - Para que `destroy-vm` funcione sin pedir snapshot final, usa `DB_SKIP_FINAL_SNAPSHOT=true`.
+- `scripts/deploy_remote.sh` no aplica `apps/api/sql/schema.sql`; el esquema se deja para aprovisionamiento inicial/manual.
