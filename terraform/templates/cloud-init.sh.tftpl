@@ -35,5 +35,25 @@ install -d -m 0755 -o ${deploy_user} -g ${deploy_user} /var/app/newpeople/shared
 install -d -m 0755 -o ${deploy_user} -g ${deploy_user} /var/app/newpeople/shared/log
 install -d -m 0755 -o ${deploy_user} -g ${deploy_user} /var/app/newpeople/shared/tmp
 
+# Legacy OpenSSL provider config, scoped via OPENSSL_CONF to the API service only
+# (needed to parse older PKCS12 certs, e.g. F5/Volterra XC client certs).
+cat <<'EOF' > /etc/ssl/openssl-legacy.cnf
+openssl_conf = openssl_init
+
+[openssl_init]
+providers = provider_sect
+
+[provider_sect]
+default = default_sect
+legacy = legacy_sect
+
+[default_sect]
+activate = 1
+
+[legacy_sect]
+activate = 1
+EOF
+chmod 0644 /etc/ssl/openssl-legacy.cnf
+
 systemctl enable nginx
 systemctl restart nginx

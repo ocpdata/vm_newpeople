@@ -201,6 +201,7 @@ Type=simple
 User=$USER
 WorkingDirectory=${current_link}
 Environment=NODE_ENV=production
+Environment=OPENSSL_CONF=/etc/ssl/openssl-legacy.cnf
 EnvironmentFile=${shared_env}
 ExecStart=/usr/bin/npm run start --prefix apps/api
 Restart=always
