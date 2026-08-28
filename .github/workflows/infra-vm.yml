@@ -196,6 +196,14 @@ jobs:
       GOOGLE_CLIENT_ID: ${{ vars.GOOGLE_CLIENT_ID }}
       GOOGLE_REDIRECT_URI: ${{ vars.GOOGLE_REDIRECT_URI }}
       GOOGLE_CLIENT_SECRET: ${{ secrets.GOOGLE_CLIENT_SECRET }}
+      WAF_LOGIN_EMAIL: ${{ vars.WAF_LOGIN_EMAIL }}
+      WAF_LOGIN_PASSWORD: ${{ secrets.WAF_LOGIN_PASSWORD }}
+      XC_API_URL: ${{ vars.XC_API_URL }}
+      XC_API_P12_FILE: ${{ vars.XC_API_P12_FILE }}
+      XC_P12_PASSWORD: ${{ secrets.XC_P12_PASSWORD }}
+      XC_NAMESPACE: ${{ vars.XC_NAMESPACE }}
+      XC_LB_NAME: ${{ vars.XC_LB_NAME }}
+      XC_WAF_MODE: ${{ vars.XC_WAF_MODE }}
     steps:
       - name: Checkout infrastructure repository
         uses: actions/checkout@v4

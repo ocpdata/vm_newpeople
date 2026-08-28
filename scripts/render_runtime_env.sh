@@ -137,3 +137,18 @@ if [[ "${AUTH_GOOGLE_ENABLED}" == "true" ]]; then
   write_pair "GOOGLE_REDIRECT_URI" "$GOOGLE_REDIRECT_URI"
   write_pair "GOOGLE_CLIENT_SECRET" "$GOOGLE_CLIENT_SECRET"
 fi
+
+# Optional F5 XC WAF test integration: only written when all pieces are configured.
+waf_vars=(WAF_LOGIN_EMAIL WAF_LOGIN_PASSWORD XC_API_URL XC_API_P12_FILE XC_P12_PASSWORD XC_NAMESPACE XC_LB_NAME XC_WAF_MODE)
+waf_configured=true
+for var_name in "${waf_vars[@]}"; do
+  if [[ -z "${!var_name:-}" ]]; then
+    waf_configured=false
+    break
+  fi
+done
+if [[ "${waf_configured}" == "true" ]]; then
+  for var_name in "${waf_vars[@]}"; do
+    write_pair "$var_name" "${!var_name}"
+  done
+fi
