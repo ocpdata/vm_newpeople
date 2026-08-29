@@ -68,6 +68,6 @@ Variables y secrets esperados para runtime:
 - `DOCUMENT_STORAGE_S3_ENDPOINT` puede quedar vacio para S3 nativo de AWS.
 - `JWT_SECRET` debe vivir en GitHub Secrets y no debe usar valores de ejemplo.
 - El workflow asume que `ocpdata/newpeople` es accesible desde GitHub Actions.
-- El despliegue instala Chromium, sus dependencias Linux y Xvfb para ejecutar las pruebas de Bot Defense sin un display fisico.
+- El despliegue instala Chromium y sus dependencias Linux, y ejecuta la API dentro de Xvfb para que las pruebas de Bot Defense dispongan de un display virtual.
 - Para que `destroy-vm` funcione sin pedir snapshot final, usa `DB_SKIP_FINAL_SNAPSHOT=true`.
 - `scripts/deploy_remote.sh` no aplica `apps/api/sql/schema.sql`; el esquema se deja para aprovisionamiento inicial/manual.
