@@ -166,6 +166,15 @@ if [[ ! -f "${playwright_deps_marker}" ]]; then
   sudo touch "${playwright_deps_marker}"
 fi
 npx playwright install chromium
+
+if ! command -v k6 >/dev/null 2>&1; then
+  curl -fsSL https://dl.k6.io/key.gpg \
+    | sudo gpg --dearmor --yes -o /usr/share/keyrings/k6-archive-keyring.gpg
+  echo "deb [signed-by=/usr/share/keyrings/k6-archive-keyring.gpg] https://dl.k6.io/deb stable main" \
+    | sudo tee /etc/apt/sources.list.d/k6.list >/dev/null
+  sudo apt-get update
+  sudo apt-get install -y k6
+fi
 popd >/dev/null
 
 db_host="$(read_env_value DB_HOST)"
