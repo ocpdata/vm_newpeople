@@ -156,6 +156,16 @@ sudo install -m 0600 -o root -g root "${env_path}" "${shared_env}"
 
 pushd "${release_root}" >/dev/null
 npm install
+
+playwright_version="$(node -p "require('playwright/package.json').version")"
+playwright_deps_marker="/var/lib/newpeople/playwright-deps-${playwright_version}"
+if [[ ! -f "${playwright_deps_marker}" ]]; then
+  sudo npx playwright install-deps chromium
+  sudo apt-get install -y xvfb xauth
+  sudo install -d -m 0755 /var/lib/newpeople
+  sudo touch "${playwright_deps_marker}"
+fi
+npx playwright install chromium
 popd >/dev/null
 
 db_host="$(read_env_value DB_HOST)"
