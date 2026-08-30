@@ -66,7 +66,7 @@ Workflow manual e independiente para copiar las versiones actuales de los objeto
 
 La ejecucion requiere confirmation=`MIGRATE_S3` y update_references_confirmation=`UPDATE_DOCUMENT_REFERENCES`. El workflow concede temporalmente al usuario IAM de origen acceso al bucket destino, ejecuta `aws s3 sync` sin `--delete`, compara cantidad y tamano total de objetos, y restaura la politica previa del bucket destino.
 
-Despues de verificar S3, el workflow usa la IP de Terraform y SSH para ejecutar la migracion de referencias desde la VM, porque RDS es privada. Cada `documents.storage_key` que aun apunta al bucket origen se comprueba con `HeadObject` en el bucket destino. Solo las filas cuyo objeto existe se actualizan; las referencias ausentes permanecen en el bucket origen y se reportan como warning. Antes de actualizar, las filas verificadas se guardan de forma idempotente en `document_storage_bucket_migration_backup` dentro de RDS.
+Despues de verificar S3, el workflow usa la IP de Terraform y SSH para ejecutar la migracion de referencias desde la VM, porque RDS es privada. Cada `storage_key` que aun apunta al bucket origen en las tablas de documentos, campanas y habilitacion comercial se comprueba con `HeadObject` en el bucket destino. Solo las filas cuyo objeto existe se actualizan; las referencias ausentes permanecen en el bucket origen y se reportan como warning. Antes de actualizar, las filas verificadas se guardan de forma idempotente en `storage_bucket_migration_backup` dentro de RDS.
 
 Variables:
 
@@ -84,6 +84,10 @@ Secrets:
 La identidad de origen necesita `s3:ListBucket` y `s3:GetObject`. La identidad de destino necesita permisos para crear, consultar y configurar el bucket, administrar temporalmente su bucket policy, listar objetos y leerlos. Si el origen usa SSE-KMS, la identidad de origen tambien necesita `kms:Decrypt` sobre la clave.
 
 Este flujo no copia versiones historicas, delete markers, politicas, lifecycle, CORS ni notificaciones. No elimina objetos del bucket origen ni cambia las variables de almacenamiento de la aplicacion. Las referencias sin objeto verificable en el destino no se modifican.
+
+### check-source-s3-history
+
+Workflow manual de solo lectura para comprobar si las referencias que permanecen en el bucket origen tienen una version historica recuperable. Requiere confirmation=`CHECK_SOURCE_S3_HISTORY`, consulta las referencias pendientes desde RDS por medio de la VM y publica en el resumen de Actions las versiones y delete markers encontrados. La identidad de origen necesita `s3:ListBucketVersions` ademas de los permisos de lectura usados por `migrate-s3`.
 
 ## Variables y secretos
 

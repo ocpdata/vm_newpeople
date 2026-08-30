@@ -1,0 +1,196 @@
+name: check-source-s3-history
+
+on:
+  workflow_dispatch:
+    inputs:
+      confirmation:
+        description: Type CHECK_SOURCE_S3_HISTORY to inspect historical object versions
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    if: ${{ inputs.confirmation == 'CHECK_SOURCE_S3_HISTORY' }}
+    runs-on: ubuntu-latest
+    env:
+      SOURCE_S3_BUCKET: ${{ vars.SOURCE_S3_BUCKET }}
+      SOURCE_AWS_REGION: ${{ vars.SOURCE_AWS_REGION }}
+      TF_TOKEN_app_terraform_io: ${{ secrets.TFC_TOKEN }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Validate configuration
+        env:
+          SOURCE_AWS_ACCESS_KEY_ID: ${{ secrets.SOURCE_AWS_ACCESS_KEY_ID }}
+          SOURCE_AWS_SECRET_ACCESS_KEY: ${{ secrets.SOURCE_AWS_SECRET_ACCESS_KEY }}
+          SSH_KEY_PEM: ${{ secrets.SSH_KEY_PEM }}
+          TFC_TOKEN: ${{ secrets.TFC_TOKEN }}
+        run: |
+          required_values=(
+            SOURCE_S3_BUCKET
+            SOURCE_AWS_REGION
+            SOURCE_AWS_ACCESS_KEY_ID
+            SOURCE_AWS_SECRET_ACCESS_KEY
+            SSH_KEY_PEM
+            TFC_TOKEN
+          )
+
+          for value_name in "${required_values[@]}"; do
+            if [[ -z "${!value_name:-}" ]]; then
+              echo "::error::Missing required variable or secret: ${value_name}" >&2
+              exit 1
+            fi
+          done
+
+      - name: Configure source AWS profile
+        env:
+          SOURCE_AWS_ACCESS_KEY_ID: ${{ secrets.SOURCE_AWS_ACCESS_KEY_ID }}
+          SOURCE_AWS_SECRET_ACCESS_KEY: ${{ secrets.SOURCE_AWS_SECRET_ACCESS_KEY }}
+        run: |
+          aws configure set aws_access_key_id "$SOURCE_AWS_ACCESS_KEY_ID" --profile source
+          aws configure set aws_secret_access_key "$SOURCE_AWS_SECRET_ACCESS_KEY" --profile source
+          aws configure set region "$SOURCE_AWS_REGION" --profile source
+          aws sts get-caller-identity --profile source >/dev/null
+          aws s3api head-bucket --bucket "$SOURCE_S3_BUCKET" --profile source
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+
+      - name: Resolve VM address from Terraform state
+        working-directory: terraform
+        run: |
+          cat > backend.remote.tfbackend <<EOF
+          organization = "${{ vars.TFC_ORG }}"
+          workspaces { name = "${{ vars.TFC_WORKSPACE }}" }
+          EOF
+          terraform init \
+            -input=false \
+            -backend-config=backend.remote.tfbackend
+          vm_host="$(terraform output -raw public_ip)"
+
+          if [[ -z "$vm_host" ]]; then
+            echo "::error::Terraform output 'public_ip' is empty." >&2
+            exit 1
+          fi
+
+          echo "VM_HOST=$vm_host" >> "$GITHUB_ENV"
+
+      - name: Configure SSH key
+        env:
+          SSH_KEY_PEM: ${{ secrets.SSH_KEY_PEM }}
+        run: |
+          mkdir -p ~/.ssh
+          printf '%s\n' "$SSH_KEY_PEM" > ~/.ssh/id_rsa
+          chmod 600 ~/.ssh/id_rsa
+          ssh-keyscan -H "$VM_HOST" >> ~/.ssh/known_hosts
+
+      - name: Read unresolved storage references from RDS
+        run: |
+          ssh \
+            -i ~/.ssh/id_rsa \
+            -o BatchMode=yes \
+            -o IdentitiesOnly=yes \
+            deployer@"$VM_HOST" \
+            "sudo bash -s -- '$SOURCE_S3_BUCKET'" \
+            > "$RUNNER_TEMP/unresolved-references.tsv" <<'REMOTE'
+          set -euo pipefail
+          source_bucket="$1"
+          set -a
+          source /var/app/newpeople/shared/config/api.env
+          set +a
+
+          query_table() {
+            local table_name="$1"
+            local file_name_column="$2"
+            MYSQL_PWD="${DB_PASSWORD:-}" mysql \
+              --batch \
+              --raw \
+              --skip-column-names \
+              --host="$DB_HOST" \
+              --port="$DB_PORT" \
+              --user="$DB_USER" \
+              "$DB_NAME" \
+              --execute="SELECT '${table_name}', id, public_id, ${file_name_column}, storage_key FROM ${table_name} WHERE storage_bucket = '${source_bucket}' ORDER BY id;"
+          }
+
+          query_table documents original_file_name
+          query_table campaign_email_shared_documents original_file_name
+          query_table commercial_enablement_assets original_file_name
+          query_table commercial_enablement_intake_sessions source_file_name
+          query_table commercial_enablement_item_files original_file_name
+          REMOTE
+
+      - name: Check current and historical source objects
+        run: |
+          references_file="$RUNNER_TEMP/unresolved-references.tsv"
+          reference_count="$(grep -c . "$references_file" || true)"
+          recoverable_count=0
+          current_count=0
+          missing_count=0
+
+          {
+            echo "## Source S3 history check"
+            echo
+            echo "Bucket: \`$SOURCE_S3_BUCKET\`"
+            echo
+            echo "| Table | ID | File | Current | Versions | Delete markers | Recoverable |"
+            echo "|---|---:|---|---:|---:|---:|---:|"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+          while IFS=$'\t' read -r table_name record_id public_id file_name storage_key; do
+            [[ -n "$storage_key" ]] || continue
+
+            if aws s3api head-object \
+              --bucket "$SOURCE_S3_BUCKET" \
+              --key "$storage_key" \
+              --profile source >/dev/null 2>&1; then
+              current="yes"
+              ((current_count += 1))
+            else
+              current="no"
+            fi
+
+            history_file="$RUNNER_TEMP/history-${record_id}-${public_id}.json"
+            if ! aws s3api list-object-versions \
+              --bucket "$SOURCE_S3_BUCKET" \
+              --prefix "$storage_key" \
+              --profile source \
+              --output json > "$history_file"; then
+              echo "::error::Unable to list object versions. The source identity needs s3:ListBucketVersions." >&2
+              exit 1
+            fi
+
+            version_count="$(jq --arg key "$storage_key" '[.Versions[]? | select(.Key == $key)] | length' "$history_file")"
+            delete_marker_count="$(jq --arg key "$storage_key" '[.DeleteMarkers[]? | select(.Key == $key)] | length' "$history_file")"
+            if (( version_count > 0 )); then
+              recoverable="yes"
+              ((recoverable_count += 1))
+            else
+              recoverable="no"
+              ((missing_count += 1))
+            fi
+
+            safe_file_name="${file_name//|/\\|}"
+            echo "| \`$table_name\` | $record_id | $safe_file_name | $current | $version_count | $delete_marker_count | $recoverable |" >> "$GITHUB_STEP_SUMMARY"
+          done < "$references_file"
+
+          {
+            echo
+            echo "References checked: $reference_count"
+            echo "Current source objects: $current_count"
+            echo "References with recoverable versions: $recoverable_count"
+            echo "References without any version: $missing_count"
+          } | tee -a "$GITHUB_STEP_SUMMARY"
+
+  confirmation_failed:
+    if: ${{ inputs.confirmation != 'CHECK_SOURCE_S3_HISTORY' }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Reject check request
+        run: |
+          echo "Check aborted. Type CHECK_SOURCE_S3_HISTORY to confirm." >&2
+          exit 1
