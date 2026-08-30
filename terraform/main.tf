@@ -28,10 +28,69 @@ data "aws_ami" "ubuntu" {
   }
 }
 
+data "aws_availability_zones" "available" {
+  state = "available"
+}
+
+resource "aws_vpc" "main" {
+  cidr_block           = var.vpc_cidr
+  enable_dns_support   = true
+  enable_dns_hostnames = true
+
+  tags = merge(local.common_tags, { Name = "${var.name_prefix}-vpc" })
+}
+
+resource "aws_internet_gateway" "main" {
+  vpc_id = aws_vpc.main.id
+
+  tags = merge(local.common_tags, { Name = "${var.name_prefix}-igw" })
+}
+
+resource "aws_subnet" "public" {
+  vpc_id                  = aws_vpc.main.id
+  cidr_block              = var.public_subnet_cidr
+  availability_zone       = data.aws_availability_zones.available.names[0]
+  map_public_ip_on_launch = false
+
+  tags = merge(local.common_tags, { Name = "${var.name_prefix}-public" })
+}
+
+resource "aws_subnet" "private_1" {
+  vpc_id            = aws_vpc.main.id
+  cidr_block        = var.private_subnet_1_cidr
+  availability_zone = data.aws_availability_zones.available.names[0]
+
+  tags = merge(local.common_tags, { Name = "${var.name_prefix}-private-1" })
+}
+
+resource "aws_subnet" "private_2" {
+  vpc_id            = aws_vpc.main.id
+  cidr_block        = var.private_subnet_2_cidr
+  availability_zone = data.aws_availability_zones.available.names[1]
+
+  tags = merge(local.common_tags, { Name = "${var.name_prefix}-private-2" })
+}
+
+resource "aws_route_table" "public" {
+  vpc_id = aws_vpc.main.id
+
+  route {
+    cidr_block = "0.0.0.0/0"
+    gateway_id = aws_internet_gateway.main.id
+  }
+
+  tags = merge(local.common_tags, { Name = "${var.name_prefix}-public" })
+}
+
+resource "aws_route_table_association" "public" {
+  subnet_id      = aws_subnet.public.id
+  route_table_id = aws_route_table.public.id
+}
+
 resource "aws_security_group" "vm" {
   name        = "${var.name_prefix}-sg"
   description = "Public access for SSH and web traffic to the NewPeople VM"
-  vpc_id      = var.vpc_id
+  vpc_id      = aws_vpc.main.id
 
   ingress {
     description = "SSH"
@@ -71,7 +130,7 @@ resource "aws_security_group" "vm" {
 resource "aws_security_group" "rds" {
   name        = "${var.name_prefix}-rds-sg"
   description = "MySQL access for the NewPeople RDS instance"
-  vpc_id      = var.vpc_id
+  vpc_id      = aws_vpc.main.id
 
   ingress {
     description     = "MySQL from application VM"
@@ -94,7 +153,7 @@ resource "aws_security_group" "rds" {
 
 resource "aws_db_subnet_group" "rds" {
   name       = "${var.name_prefix}-db-subnets"
-  subnet_ids = [var.db_subnet_id_1, var.db_subnet_id_2]
+  subnet_ids = [aws_subnet.private_1.id, aws_subnet.private_2.id]
 
   tags = merge(local.common_tags, { Name = "${var.name_prefix}-db-subnets" })
 }
@@ -126,9 +185,11 @@ resource "aws_db_instance" "mysql" {
 resource "aws_instance" "vm" {
   ami                         = data.aws_ami.ubuntu.id
   instance_type               = var.instance_type
-  subnet_id                   = var.subnet_id
+  subnet_id                   = aws_subnet.public.id
   vpc_security_group_ids      = [aws_security_group.vm.id]
-  associate_public_ip_address = false
+  associate_public_ip_address = true
+
+  depends_on = [aws_route_table_association.public]
 
   user_data = templatefile("${path.module}/templates/cloud-init.sh.tftpl", {
     deploy_user    = var.deploy_user

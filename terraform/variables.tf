@@ -9,13 +9,23 @@ variable "name_prefix" {
   default     = "vm-newpeople"
 }
 
-variable "vpc_id" {
-  description = "Target VPC ID where the EC2 instance will be created."
+variable "vpc_cidr" {
+  description = "IPv4 CIDR block for the NewPeople VPC."
   type        = string
 }
 
-variable "subnet_id" {
-  description = "Public subnet ID where the EC2 instance will be created."
+variable "public_subnet_cidr" {
+  description = "IPv4 CIDR block for the public EC2 subnet."
+  type        = string
+}
+
+variable "private_subnet_1_cidr" {
+  description = "IPv4 CIDR block for the first private RDS subnet."
+  type        = string
+}
+
+variable "private_subnet_2_cidr" {
+  description = "IPv4 CIDR block for the second private RDS subnet."
   type        = string
 }
 
@@ -47,16 +57,6 @@ variable "tags" {
   description = "Additional tags applied to created resources."
   type        = map(string)
   default     = {}
-}
-
-variable "db_subnet_id_1" {
-  description = "First subnet ID for the RDS DB subnet group. Must be in the target VPC."
-  type        = string
-}
-
-variable "db_subnet_id_2" {
-  description = "Second subnet ID for the RDS DB subnet group. Must be in a different AZ within the target VPC."
-  type        = string
 }
 
 variable "db_instance_class" {

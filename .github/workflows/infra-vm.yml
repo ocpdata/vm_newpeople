@@ -31,11 +31,10 @@ jobs:
       TF_TOKEN_app_terraform_io: ${{ secrets.TFC_TOKEN }}
       TF_VAR_aws_region: ${{ vars.AWS_REGION }}
       TF_VAR_instance_type: ${{ vars.INSTANCE_TYPE }}
-      TF_VAR_vpc_id: ${{ vars.VPC_ID }}
-      TF_VAR_subnet_id: ${{ vars.SUBNET_ID }}
-      TF_VAR_ssh_public_key: ${{ secrets.SSH_PUBLIC_KEY }}
-      TF_VAR_db_subnet_id_1: ${{ vars.DB_SUBNET_ID_1 }}
-      TF_VAR_db_subnet_id_2: ${{ vars.DB_SUBNET_ID_2 }}
+      TF_VAR_vpc_cidr: ${{ vars.VPC_CIDR }}
+      TF_VAR_public_subnet_cidr: ${{ vars.PUBLIC_SUBNET_CIDR }}
+      TF_VAR_private_subnet_1_cidr: ${{ vars.PRIVATE_SUBNET_1_CIDR }}
+      TF_VAR_private_subnet_2_cidr: ${{ vars.PRIVATE_SUBNET_2_CIDR }}
       TF_VAR_db_instance_class: ${{ vars.DB_INSTANCE_CLASS }}
       TF_VAR_db_allocated_storage: ${{ vars.DB_ALLOCATED_STORAGE }}
       TF_VAR_db_engine_version: ${{ vars.DB_ENGINE_VERSION }}
@@ -53,6 +52,21 @@ jobs:
 
       - name: Setup Terraform
         uses: hashicorp/setup-terraform@v3
+
+      - name: Derive SSH public key from PEM
+        env:
+          SSH_KEY_PEM: ${{ secrets.SSH_KEY_PEM }}
+        run: |
+          if [[ -z "${SSH_KEY_PEM:-}" ]]; then
+            echo "::error::Missing required secret SSH_KEY_PEM." >&2
+            exit 1
+          fi
+
+          key_file="$RUNNER_TEMP/newpeople.pem"
+          umask 077
+          printf '%s\n' "$SSH_KEY_PEM" > "$key_file"
+          public_key="$(ssh-keygen -y -f "$key_file")"
+          echo "TF_VAR_ssh_public_key=${public_key}" >> "$GITHUB_ENV"
 
       - name: Terraform fmt
         run: terraform fmt -check -recursive
@@ -93,11 +107,10 @@ jobs:
       TF_TOKEN_app_terraform_io: ${{ secrets.TFC_TOKEN }}
       TF_VAR_aws_region: ${{ vars.AWS_REGION }}
       TF_VAR_instance_type: ${{ vars.INSTANCE_TYPE }}
-      TF_VAR_vpc_id: ${{ vars.VPC_ID }}
-      TF_VAR_subnet_id: ${{ vars.SUBNET_ID }}
-      TF_VAR_ssh_public_key: ${{ secrets.SSH_PUBLIC_KEY }}
-      TF_VAR_db_subnet_id_1: ${{ vars.DB_SUBNET_ID_1 }}
-      TF_VAR_db_subnet_id_2: ${{ vars.DB_SUBNET_ID_2 }}
+      TF_VAR_vpc_cidr: ${{ vars.VPC_CIDR }}
+      TF_VAR_public_subnet_cidr: ${{ vars.PUBLIC_SUBNET_CIDR }}
+      TF_VAR_private_subnet_1_cidr: ${{ vars.PRIVATE_SUBNET_1_CIDR }}
+      TF_VAR_private_subnet_2_cidr: ${{ vars.PRIVATE_SUBNET_2_CIDR }}
       TF_VAR_db_instance_class: ${{ vars.DB_INSTANCE_CLASS }}
       TF_VAR_db_allocated_storage: ${{ vars.DB_ALLOCATED_STORAGE }}
       TF_VAR_db_engine_version: ${{ vars.DB_ENGINE_VERSION }}
@@ -148,11 +161,10 @@ jobs:
       TF_TOKEN_app_terraform_io: ${{ secrets.TFC_TOKEN }}
       TF_VAR_aws_region: ${{ vars.AWS_REGION }}
       TF_VAR_instance_type: ${{ vars.INSTANCE_TYPE }}
-      TF_VAR_vpc_id: ${{ vars.VPC_ID }}
-      TF_VAR_subnet_id: ${{ vars.SUBNET_ID }}
-      TF_VAR_ssh_public_key: ${{ secrets.SSH_PUBLIC_KEY }}
-      TF_VAR_db_subnet_id_1: ${{ vars.DB_SUBNET_ID_1 }}
-      TF_VAR_db_subnet_id_2: ${{ vars.DB_SUBNET_ID_2 }}
+      TF_VAR_vpc_cidr: ${{ vars.VPC_CIDR }}
+      TF_VAR_public_subnet_cidr: ${{ vars.PUBLIC_SUBNET_CIDR }}
+      TF_VAR_private_subnet_1_cidr: ${{ vars.PRIVATE_SUBNET_1_CIDR }}
+      TF_VAR_private_subnet_2_cidr: ${{ vars.PRIVATE_SUBNET_2_CIDR }}
       TF_VAR_db_instance_class: ${{ vars.DB_INSTANCE_CLASS }}
       TF_VAR_db_allocated_storage: ${{ vars.DB_ALLOCATED_STORAGE }}
       TF_VAR_db_engine_version: ${{ vars.DB_ENGINE_VERSION }}
@@ -283,20 +295,20 @@ jobs:
 
       - name: Configure SSH key
         env:
-          SSH_PRIVATE_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
+          SSH_KEY_PEM: ${{ secrets.SSH_KEY_PEM }}
         run: |
           if [[ -z "${VM_HOST:-}" ]]; then
             echo "::error::VM_HOST is empty. Terraform did not return a valid public IP." >&2
             exit 1
           fi
 
-          if [[ -z "${SSH_PRIVATE_KEY:-}" ]]; then
-            echo "::error::Missing required secret SSH_PRIVATE_KEY." >&2
+          if [[ -z "${SSH_KEY_PEM:-}" ]]; then
+            echo "::error::Missing required secret SSH_KEY_PEM." >&2
             exit 1
           fi
 
           mkdir -p ~/.ssh
-          printf '%s\n' "${SSH_PRIVATE_KEY}" > ~/.ssh/id_rsa
+          printf '%s\n' "${SSH_KEY_PEM}" > ~/.ssh/id_rsa
           chmod 600 ~/.ssh/id_rsa
           ssh-keyscan -H "$VM_HOST" >> ~/.ssh/known_hosts
 
@@ -383,7 +395,7 @@ jobs:
       - name: Collect remote diagnostics on failure
         if: failure()
         env:
-          SSH_PRIVATE_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
+          SSH_KEY_PEM: ${{ secrets.SSH_KEY_PEM }}
         run: |
           if [[ -z "${VM_HOST:-}" ]]; then
             echo "Skipping remote diagnostics: VM_HOST is empty (earlier step likely failed before host resolution)."
@@ -391,12 +403,12 @@ jobs:
           fi
 
           if [[ ! -f ~/.ssh/id_rsa ]]; then
-            if [[ -z "${SSH_PRIVATE_KEY:-}" ]]; then
+            if [[ -z "${SSH_KEY_PEM:-}" ]]; then
               echo "Skipping remote diagnostics: SSH private key is unavailable in this step."
               exit 0
             fi
             mkdir -p ~/.ssh
-            printf '%s\n' "${SSH_PRIVATE_KEY}" > ~/.ssh/id_rsa
+            printf '%s\n' "${SSH_KEY_PEM}" > ~/.ssh/id_rsa
             chmod 600 ~/.ssh/id_rsa
             ssh-keyscan -H "$VM_HOST" >> ~/.ssh/known_hosts 2>/dev/null || true
           fi

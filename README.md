@@ -1,74 +1,122 @@
 # vm_newpeople
 
-Infraestructura y despliegue para publicar NewPeople en AWS usando Terraform y GitHub Actions.
+Infraestructura y despliegue de NewPeople en AWS con Terraform y GitHub Actions.
 
 ## Alcance
 
-Este repositorio administra la infraestructura base del ambiente:
+Este repositorio administra:
 
-- EC2 con IP publica dentro de una VPC y subnet existentes
-- RDS MySQL dentro de dos subnets existentes de la misma VPC
-- Security Group publico en `22`, `80` y `443`
-- Security Group privado para MySQL accesible solo desde la VM
-- bootstrap base del sistema con Nginx, Node.js 20 y usuario `deployer`
-- workflow de despliegue de la aplicacion `ocpdata/newpeople`
+- VPC con una subnet publica y dos subnets privadas en zonas distintas.
+- VM EC2 Ubuntu con Elastic IP.
+- RDS MySQL en las subnets privadas.
+- Security Groups para trafico web y acceso MySQL desde la VM.
+- Bootstrap base de la VM (Nginx, Node.js 20, usuario deployer).
+- Despliegue remoto de la aplicacion ocpdata/newpeople por workflow.
 
-Quedan fuera del alcance de Terraform en este repositorio:
+Fuera de alcance:
 
-- bucket S3 de documentos
+- Provisionamiento de bucket S3 de documentos.
+- Codigo fuente de la aplicacion NewPeople (vive en otro repositorio).
 
 ## Estructura
 
 ```text
-terraform/                 Stack principal de Terraform
-scripts/                   Scripts usados por el workflow de despliegue
-.github/workflows/         Workflows `infra-vm` y `destroy-environment`
+terraform/                 Stack de infraestructura
+scripts/                   Scripts de render y despliegue remoto
+.github/workflows/         infra-vm y destroy-environment
 ```
 
 ## Workflows
 
-### `infra-vm`
+### infra-vm
 
-Hace `plan`, `apply` y despliegue de aplicacion en una sola ejecucion manual por `workflow_dispatch`.
+Workflow manual (workflow_dispatch) que ejecuta en cadena:
 
-### `destroy-environment`
+1. plan
+2. apply
+3. deploy
 
-Hace `terraform destroy` manual sobre el mismo workspace de Terraform Cloud para eliminar toda la infraestructura del entorno, incluida la VM y la base RDS.
+Inputs:
 
-Usa estas variables/secrets de infraestructura:
+- app_repository: repo de aplicacion a desplegar (default ocpdata/newpeople).
+- app_ref: branch, tag o SHA a desplegar (default main).
 
-- Variables: `AWS_REGION`, `TFC_ORG`, `TFC_WORKSPACE`, `VPC_ID`, `SUBNET_ID`, `INSTANCE_TYPE`
-- Variables RDS: `DB_SUBNET_ID_1`, `DB_SUBNET_ID_2`, `DB_INSTANCE_CLASS`, `DB_ALLOCATED_STORAGE`, `DB_ENGINE_VERSION`, `DB_NAME`, `DB_PORT`, `DB_MULTI_AZ`, `DB_PUBLICLY_ACCESSIBLE`, `DB_DELETION_PROTECTION`, `DB_SKIP_FINAL_SNAPSHOT`
-- Secrets: `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `TFC_TOKEN`, `SSH_PUBLIC_KEY`, `DB_USER`, `DB_PASSWORD`
+Comportamiento relevante:
 
-Variables y secrets esperados para runtime:
+- El checkout de aplicacion usa exactamente app_ref.
+- La build web se ejecuta en GitHub Actions y luego se empaqueta release tar.gz.
+- DB_HOST se obtiene de terraform output y se inyecta al runtime env.
+- El despliegue remoto crea un release versionado en /var/app/newpeople/releases/<release_id> y actualiza /var/app/newpeople/current.
+- Se levanta servicio systemd newpeople-api y Nginx sirve apps/web/dist.
+- Healthcheck final externo: http://<VM_HOST>/health.
 
-- App: `PORT`, `JWT_EXPIRES_IN`, `APP_INVITE_SETUP_URL`, `VITE_API_URL`
-- Secrets: `JWT_SECRET`
-- DB: `DB_PORT`, `DB_NAME`, `DB_POOL_SIZE`, `DB_USER`, `DB_PASSWORD`
-- SMTP: `SMTP_HOST`, `SMTP_PORT`, `SMTP_SECURE`, `SMTP_FROM`, `SMTP_USER`, `SMTP_PASS`
-- OpenAI: `OPENAI_MODEL`, `OPENAI_BASE_URL`, `OPENAI_ENABLE_WEB_SEARCH`, `OPENAI_API_KEY`
-- Storage: `DOCUMENT_STORAGE_PROVIDER`, `DOCUMENT_STORAGE_LOCAL_ROOT`, `DOCUMENT_STORAGE_S3_BUCKET`, `DOCUMENT_STORAGE_S3_REGION`, `DOCUMENT_STORAGE_S3_FORCE_PATH_STYLE`, `DOCUMENT_STORAGE_S3_ENDPOINT`, `DOCUMENT_STORAGE_S3_ACCESS_KEY_ID`, `DOCUMENT_STORAGE_S3_SECRET_ACCESS_KEY`
-- SSH: `SSH_PRIVATE_KEY`
+### destroy-environment
 
-## Flujo recomendado
+Workflow manual destructivo para terraform destroy del workspace remoto.
 
-1. Ejecutar `infra-vm` manualmente indicando el `app_ref` que quieres desplegar.
-2. El workflow hace `terraform plan` y `terraform apply`.
-3. Luego construye y despliega `ocpdata/newpeople` sobre la VM.
-4. El workflow resuelve el endpoint de RDS desde Terraform y lo inyecta como `DB_HOST` en tiempo de despliegue.
-5. Para una base nueva, ejecutar bootstrap de esquema una sola vez de forma manual en la VM:
-   Comando: `sudo bash /var/app/newpeople/current/scripts/bootstrap_schema_manual.sh /var/app/newpeople/current /var/app/newpeople/shared/config/api.env`
-   Este paso NO se ejecuta automaticamente durante deploys.
-6. Verificar `http://<ip-publica>/health`.
-7. Cuando quieras desmontar el entorno, ejecutar `destroy-environment` manualmente y confirmar el borrado del workspace y de la base RDS.
+Validaciones obligatorias:
 
-## Notas operativas
+- confirmation debe ser DELETE_ENVIRONMENT.
+- terraform_workspace debe coincidir exactamente con vars.TFC_WORKSPACE.
+  Si no coinciden, el job falla de forma segura sin destruir recursos.
 
+## Variables y secretos
+
+Infraestructura (plan/apply/destroy):
+
+- Variables generales: AWS_REGION, TFC_ORG, TFC_WORKSPACE, INSTANCE_TYPE.
+- Variables de red: VPC_CIDR=`10.90.0.0/16`, PUBLIC_SUBNET_CIDR=`10.90.1.0/24`, PRIVATE_SUBNET_1_CIDR=`10.90.10.0/24`, PRIVATE_SUBNET_2_CIDR=`10.90.20.0/24`.
+- Variables RDS: DB_INSTANCE_CLASS=`db.t4g.micro`, DB_ALLOCATED_STORAGE, DB_ENGINE_VERSION=`8.4.8`, DB_NAME=`newpeople_crm_dev`, DB_PORT, DB_MULTI_AZ, DB_PUBLICLY_ACCESSIBLE, DB_DELETION_PROTECTION=`false`, DB_SKIP_FINAL_SNAPSHOT=`true`.
+- Secrets: AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY, TFC_TOKEN, SSH_KEY_PEM, DB_USER, DB_PASSWORD.
+
+Terraform crea la VPC, subnets y RDS en la primera ejecucion y los reutiliza en las siguientes mediante el mismo estado de TFC_WORKSPACE. SSH_KEY_PEM contiene el archivo PEM completo; el workflow deriva de el la clave publica que instala en la VM.
+
+Runtime de aplicacion (deploy):
+
+- App: PORT, JWT_EXPIRES_IN, APP_BASE_URL, APP_INVITE_SETUP_URL, VITE_API_URL, AUTH_GOOGLE_ENABLED.
+- Secrets app: JWT_SECRET.
+- DB: DB_PORT, DB_NAME, DB_POOL_SIZE, DB_USER, DB_PASSWORD (DB_HOST se resuelve desde Terraform).
+- SMTP: SMTP_HOST, SMTP_PORT, SMTP_SECURE, SMTP_FROM, SMTP_USER, SMTP_PASS.
+- OpenAI: OPENAI_MODEL, OPENAI_BASE_URL, OPENAI_ENABLE_WEB_SEARCH, OPENAI_API_KEY.
+- Storage local: DOCUMENT_STORAGE_PROVIDER=local y DOCUMENT_STORAGE_LOCAL_ROOT.
+- Storage S3/S3-compatible: DOCUMENT_STORAGE_PROVIDER=s3 o s3_compatible, DOCUMENT_STORAGE_S3_BUCKET, DOCUMENT_STORAGE_S3_REGION, DOCUMENT_STORAGE_S3_FORCE_PATH_STYLE, DOCUMENT_STORAGE_S3_ACCESS_KEY_ID, DOCUMENT_STORAGE_S3_SECRET_ACCESS_KEY, opcional DOCUMENT_STORAGE_S3_ENDPOINT.
+- OAuth Google (solo si AUTH_GOOGLE_ENABLED=true): GOOGLE_CLIENT_ID, GOOGLE_REDIRECT_URI, GOOGLE_CLIENT_SECRET.
+- Secret de acceso VM desde Actions: SSH_KEY_PEM.
+
+## Flujo operativo recomendado
+
+1. Lanzar infra-vm indicando app_ref exacto (idealmente SHA completo).
+2. Verificar en logs del step Checkout application repository que ref y SHA sean los esperados.
+3. Tomar VM_HOST desde logs (Show public IP).
+4. Validar salud en http://<VM_HOST>/health.
+5. Validar funcionalidad de la app en la URL publicada.
+6. Para una base nueva, ejecutar una sola vez en la VM:
+   `sudo bash /var/app/newpeople/current/scripts/bootstrap_schema_manual.sh /var/app/newpeople/current /var/app/newpeople/shared/config/api.env`
+
+## Detalles tecnicos de despliegue remoto
+
+El script remoto:
+
+- Instala dependencias npm del release.
+- Instala Chromium y sus dependencias Linux.
+- Ejecuta la API dentro de Xvfb para las pruebas de Bot Defense.
+- Instala k6 para ejecutar las fases controladas de las pruebas DoS L7 desde la VM.
+- No aplica apps/api/sql/schema.sql; el esquema se aprovisiona inicialmente de forma manual.
+- Configura systemd para API y Nginx para frontend + proxy /api.
+- Reinicia servicios y valida healthcheck local antes de salir.
+
+## Notas actuales de versionado y diagnostico
+
+- El estado funcional visible depende del app_ref desplegado.
+- Si se usa app_ref=main, el resultado depende del HEAD vigente al momento de la corrida.
+- Para auditoria, el origen real de version se confirma en logs del checkout de aplicacion (ref y git log -1).
+- Diferencias entre dominio publico e IP de VM pueden provenir de DNS/proxy delante de la instancia.
+
+## Buenas practicas
+
+- Usar SHA fijo de app_ref para despliegues reproducibles.
+- Mantener DB_SKIP_FINAL_SNAPSHOT=true solo cuando el entorno sea efimero.
+- No reutilizar secretos de ejemplo en produccion.
+- Verificar que VITE_API_URL y APP_BASE_URL correspondan al endpoint expuesto al usuario final.
 - `DOCUMENT_STORAGE_S3_ENDPOINT` puede quedar vacio para S3 nativo de AWS.
-- `JWT_SECRET` debe vivir en GitHub Secrets y no debe usar valores de ejemplo.
 - El workflow asume que `ocpdata/newpeople` es accesible desde GitHub Actions.
-- El despliegue instala Chromium y sus dependencias Linux, y ejecuta la API dentro de Xvfb para que las pruebas de Bot Defense dispongan de un display virtual.
-- El despliegue instala k6 para ejecutar las fases controladas de las pruebas DoS L7 desde la misma VM.
-- Para que `destroy-vm` funcione sin pedir snapshot final, usa `DB_SKIP_FINAL_SNAPSHOT=true`.
-- `scripts/deploy_remote.sh` no aplica `apps/api/sql/schema.sql`; el esquema se deja para aprovisionamiento inicial/manual.
