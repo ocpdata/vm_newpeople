@@ -64,7 +64,9 @@ Validaciones obligatorias:
 
 Workflow manual e independiente para copiar las versiones actuales de los objetos entre cuentas AWS. Crea el bucket destino cuando no existe, habilita cifrado SSE-S3, versionado, bloqueo de acceso publico y ownership del bucket destino.
 
-La ejecucion requiere confirmation=`MIGRATE_S3`. El workflow concede temporalmente al usuario IAM de origen acceso al bucket destino, ejecuta `aws s3 sync` sin `--delete`, compara cantidad y tamano total de objetos, y restaura la politica previa del bucket destino.
+La ejecucion requiere confirmation=`MIGRATE_S3` y update_references_confirmation=`UPDATE_DOCUMENT_REFERENCES`. El workflow concede temporalmente al usuario IAM de origen acceso al bucket destino, ejecuta `aws s3 sync` sin `--delete`, compara cantidad y tamano total de objetos, y restaura la politica previa del bucket destino.
+
+Despues de verificar S3, el workflow usa la IP de Terraform y SSH para ejecutar la migracion de referencias desde la VM, porque RDS es privada. Cada `documents.storage_key` que aun apunta al bucket origen se comprueba con `HeadObject` en el bucket destino. Solo las filas cuyo objeto existe se actualizan; las referencias ausentes permanecen en el bucket origen y se reportan como warning. Antes de actualizar, las filas verificadas se guardan de forma idempotente en `document_storage_bucket_migration_backup` dentro de RDS.
 
 Variables:
 
@@ -77,10 +79,11 @@ Secrets:
 
 - SOURCE_AWS_ACCESS_KEY_ID y SOURCE_AWS_SECRET_ACCESS_KEY: credenciales de lectura de la cuenta origen.
 - AWS_ACCESS_KEY_ID y AWS_SECRET_ACCESS_KEY: credenciales existentes de la cuenta destino.
+- TFC_TOKEN y SSH_KEY_PEM: acceso al estado de Terraform y a la VM para actualizar las referencias en RDS.
 
 La identidad de origen necesita `s3:ListBucket` y `s3:GetObject`. La identidad de destino necesita permisos para crear, consultar y configurar el bucket, administrar temporalmente su bucket policy, listar objetos y leerlos. Si el origen usa SSE-KMS, la identidad de origen tambien necesita `kms:Decrypt` sobre la clave.
 
-Este flujo no copia versiones historicas, delete markers, politicas, lifecycle, CORS ni notificaciones. No elimina objetos del bucket origen ni actualiza automaticamente las variables de almacenamiento de la aplicacion.
+Este flujo no copia versiones historicas, delete markers, politicas, lifecycle, CORS ni notificaciones. No elimina objetos del bucket origen ni cambia las variables de almacenamiento de la aplicacion. Las referencias sin objeto verificable en el destino no se modifican.
 
 ## Variables y secretos
 

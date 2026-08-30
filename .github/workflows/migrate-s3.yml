@@ -7,6 +7,10 @@ on:
         description: Type MIGRATE_S3 to confirm the cross-account copy
         required: true
         type: string
+      update_references_confirmation:
+        description: Type UPDATE_DOCUMENT_REFERENCES to confirm the RDS update
+        required: true
+        type: string
 
 permissions:
   contents: read
@@ -17,7 +21,7 @@ concurrency:
 
 jobs:
   migrate:
-    if: ${{ inputs.confirmation == 'MIGRATE_S3' }}
+    if: ${{ inputs.confirmation == 'MIGRATE_S3' && inputs.update_references_confirmation == 'UPDATE_DOCUMENT_REFERENCES' }}
     runs-on: ubuntu-latest
     env:
       SOURCE_S3_BUCKET: ${{ vars.SOURCE_S3_BUCKET }}
@@ -26,13 +30,19 @@ jobs:
       DESTINATION_AWS_REGION: ${{ vars.DESTINATION_AWS_REGION }}
       DESTINATION_POLICY_CONFIGURED: "false"
       DESTINATION_POLICY_EXISTED: "false"
+      TF_TOKEN_app_terraform_io: ${{ secrets.TFC_TOKEN }}
     steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
       - name: Validate configuration
         env:
           SOURCE_AWS_ACCESS_KEY_ID: ${{ secrets.SOURCE_AWS_ACCESS_KEY_ID }}
           SOURCE_AWS_SECRET_ACCESS_KEY: ${{ secrets.SOURCE_AWS_SECRET_ACCESS_KEY }}
           DESTINATION_AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
           DESTINATION_AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          SSH_KEY_PEM: ${{ secrets.SSH_KEY_PEM }}
+          TFC_TOKEN: ${{ secrets.TFC_TOKEN }}
         run: |
           required_values=(
             SOURCE_S3_BUCKET
@@ -43,6 +53,8 @@ jobs:
             SOURCE_AWS_SECRET_ACCESS_KEY
             DESTINATION_AWS_ACCESS_KEY_ID
             DESTINATION_AWS_SECRET_ACCESS_KEY
+            SSH_KEY_PEM
+            TFC_TOKEN
           )
 
           for value_name in "${required_values[@]}"; do
@@ -192,6 +204,52 @@ jobs:
             exit 1
           fi
 
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+
+      - name: Resolve VM address from Terraform state
+        working-directory: terraform
+        run: |
+          cat > backend.remote.tfbackend <<EOF
+          organization = "${{ vars.TFC_ORG }}"
+          workspaces { name = "${{ vars.TFC_WORKSPACE }}" }
+          EOF
+          terraform init \
+            -input=false \
+            -backend-config=backend.remote.tfbackend
+          vm_host="$(terraform output -raw public_ip)"
+
+          if [[ -z "$vm_host" ]]; then
+            echo "::error::Terraform output 'public_ip' is empty." >&2
+            exit 1
+          fi
+
+          echo "VM_HOST=$vm_host" >> "$GITHUB_ENV"
+
+      - name: Configure SSH key
+        env:
+          SSH_KEY_PEM: ${{ secrets.SSH_KEY_PEM }}
+        run: |
+          mkdir -p ~/.ssh
+          printf '%s\n' "$SSH_KEY_PEM" > ~/.ssh/id_rsa
+          chmod 600 ~/.ssh/id_rsa
+          ssh-keyscan -H "$VM_HOST" >> ~/.ssh/known_hosts
+
+      - name: Update verified document references in RDS
+        run: |
+          scp \
+            -i ~/.ssh/id_rsa \
+            -o BatchMode=yes \
+            -o IdentitiesOnly=yes \
+            scripts/migrate_document_storage_references.sh \
+            deployer@"$VM_HOST":/tmp/migrate_document_storage_references.sh
+          ssh \
+            -i ~/.ssh/id_rsa \
+            -o BatchMode=yes \
+            -o IdentitiesOnly=yes \
+            deployer@"$VM_HOST" \
+            "sudo bash /tmp/migrate_document_storage_references.sh '$SOURCE_S3_BUCKET' '$DESTINATION_S3_BUCKET' /var/app/newpeople/shared/config/api.env"
+
       - name: Restore destination bucket policy
         if: ${{ always() && env.DESTINATION_POLICY_CONFIGURED == 'true' }}
         run: |
@@ -207,10 +265,10 @@ jobs:
           fi
 
   confirmation_failed:
-    if: ${{ inputs.confirmation != 'MIGRATE_S3' }}
+    if: ${{ inputs.confirmation != 'MIGRATE_S3' || inputs.update_references_confirmation != 'UPDATE_DOCUMENT_REFERENCES' }}
     runs-on: ubuntu-latest
     steps:
       - name: Reject migration request
         run: |
-          echo "Migration aborted. Type MIGRATE_S3 to confirm the cross-account copy." >&2
+          echo "Migration aborted. Type MIGRATE_S3 and UPDATE_DOCUMENT_REFERENCES in their confirmation fields." >&2
           exit 1
