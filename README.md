@@ -90,8 +90,6 @@ Runtime de aplicacion (deploy):
 3. Tomar VM_HOST desde logs (Show public IP).
 4. Validar salud en http://<VM_HOST>/health.
 5. Validar funcionalidad de la app en la URL publicada.
-6. Para una base nueva, ejecutar una sola vez en la VM:
-   `sudo bash /var/app/newpeople/current/scripts/bootstrap_schema_manual.sh /var/app/newpeople/current /var/app/newpeople/shared/config/api.env`
 
 ## Detalles tecnicos de despliegue remoto
 
@@ -101,7 +99,8 @@ El script remoto:
 - Instala Chromium y sus dependencias Linux.
 - Ejecuta la API dentro de Xvfb para las pruebas de Bot Defense.
 - Instala k6 para ejecutar las fases controladas de las pruebas DoS L7 desde la VM.
-- No aplica apps/api/sql/schema.sql; el esquema se aprovisiona inicialmente de forma manual.
+- Si la tabla users no existe, aplica apps/api/sql/schema.sql automaticamente una sola vez.
+- Si el esquema ya existe, conserva los datos y solo aplica compatibilidad con tablas de propuestas.
 - Configura systemd para API y Nginx para frontend + proxy /api.
 - Reinicia servicios y valida healthcheck local antes de salir.
 

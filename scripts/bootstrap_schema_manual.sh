@@ -48,7 +48,7 @@ tmp_schema="$(mktemp)"
 trap 'rm -f "${tmp_schema}"' EXIT
 sed "s/newpeople_crm/${DB_NAME}/g" "${schema_path}" > "${tmp_schema}"
 
-echo "Applying schema manually to ${DB_HOST}:${DB_PORT}/${DB_NAME}"
+echo "Applying initial schema to ${DB_HOST}:${DB_PORT}/${DB_NAME}"
 MYSQL_PWD="${DB_PASSWORD:-}" mysql \
   --host="${DB_HOST}" \
   --port="${DB_PORT}" \

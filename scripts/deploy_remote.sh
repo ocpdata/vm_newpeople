@@ -56,13 +56,22 @@ database_table_exists() {
   [[ "${table_count}" == "1" ]]
 }
 
-ensure_proposal_schema_compatibility() {
-  if ! database_table_exists "users"; then
-    echo "Base schema is not initialized; skipping proposal schema compatibility."
-    echo "Run scripts/bootstrap_schema_manual.sh once after this deployment."
-    return 0
+initialize_base_schema_if_needed() {
+  if database_table_exists "users"; then
+    echo "Base schema is already initialized; preserving existing database data."
+    return
   fi
 
+  echo "Base schema is not initialized; applying it once."
+  sudo bash "${release_root}/scripts/bootstrap_schema_manual.sh" "${release_root}" "${shared_env}"
+
+  if ! database_table_exists "users"; then
+    echo "Base schema bootstrap completed without creating the users table." >&2
+    exit 1
+  fi
+}
+
+ensure_proposal_schema_compatibility() {
   run_mysql_database_sql "
 CREATE TABLE IF NOT EXISTS proposal_templates (
   id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
@@ -219,9 +228,7 @@ if ! command -v mysql >/dev/null 2>&1; then
   sudo apt-get install -y mysql-client
 fi
 
-# IMPORTANT:
-# Do not run apps/api/sql/schema.sql during regular deployments.
-# Schema bootstrap must be a manual, one-time operation for new databases.
+initialize_base_schema_if_needed
 ensure_proposal_schema_compatibility
 
 api_port="$(sudo grep '^PORT=' "${shared_env}" | cut -d= -f2-)"
