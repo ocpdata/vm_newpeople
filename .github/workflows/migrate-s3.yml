@@ -1,0 +1,216 @@
+name: migrate-s3
+
+on:
+  workflow_dispatch:
+    inputs:
+      confirmation:
+        description: Type MIGRATE_S3 to confirm the cross-account copy
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: migrate-s3-${{ vars.DESTINATION_S3_BUCKET }}
+  cancel-in-progress: false
+
+jobs:
+  migrate:
+    if: ${{ inputs.confirmation == 'MIGRATE_S3' }}
+    runs-on: ubuntu-latest
+    env:
+      SOURCE_S3_BUCKET: ${{ vars.SOURCE_S3_BUCKET }}
+      SOURCE_AWS_REGION: ${{ vars.SOURCE_AWS_REGION }}
+      DESTINATION_S3_BUCKET: ${{ vars.DESTINATION_S3_BUCKET }}
+      DESTINATION_AWS_REGION: ${{ vars.DESTINATION_AWS_REGION }}
+      DESTINATION_POLICY_CONFIGURED: "false"
+      DESTINATION_POLICY_EXISTED: "false"
+    steps:
+      - name: Validate configuration
+        env:
+          SOURCE_AWS_ACCESS_KEY_ID: ${{ secrets.SOURCE_AWS_ACCESS_KEY_ID }}
+          SOURCE_AWS_SECRET_ACCESS_KEY: ${{ secrets.SOURCE_AWS_SECRET_ACCESS_KEY }}
+          DESTINATION_AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          DESTINATION_AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+        run: |
+          required_values=(
+            SOURCE_S3_BUCKET
+            SOURCE_AWS_REGION
+            DESTINATION_S3_BUCKET
+            DESTINATION_AWS_REGION
+            SOURCE_AWS_ACCESS_KEY_ID
+            SOURCE_AWS_SECRET_ACCESS_KEY
+            DESTINATION_AWS_ACCESS_KEY_ID
+            DESTINATION_AWS_SECRET_ACCESS_KEY
+          )
+
+          for value_name in "${required_values[@]}"; do
+            if [[ -z "${!value_name:-}" ]]; then
+              echo "::error::Missing required variable or secret: ${value_name}" >&2
+              exit 1
+            fi
+          done
+
+          if [[ "$SOURCE_S3_BUCKET" == "$DESTINATION_S3_BUCKET" ]]; then
+            echo "::error::Source and destination buckets must be different." >&2
+            exit 1
+          fi
+
+      - name: Configure AWS profiles
+        env:
+          SOURCE_AWS_ACCESS_KEY_ID: ${{ secrets.SOURCE_AWS_ACCESS_KEY_ID }}
+          SOURCE_AWS_SECRET_ACCESS_KEY: ${{ secrets.SOURCE_AWS_SECRET_ACCESS_KEY }}
+          DESTINATION_AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          DESTINATION_AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+        run: |
+          aws configure set aws_access_key_id "$SOURCE_AWS_ACCESS_KEY_ID" --profile source
+          aws configure set aws_secret_access_key "$SOURCE_AWS_SECRET_ACCESS_KEY" --profile source
+          aws configure set region "$SOURCE_AWS_REGION" --profile source
+
+          aws configure set aws_access_key_id "$DESTINATION_AWS_ACCESS_KEY_ID" --profile destination
+          aws configure set aws_secret_access_key "$DESTINATION_AWS_SECRET_ACCESS_KEY" --profile destination
+          aws configure set region "$DESTINATION_AWS_REGION" --profile destination
+
+          aws sts get-caller-identity --profile source >/dev/null
+          aws sts get-caller-identity --profile destination >/dev/null
+          aws s3api head-bucket --bucket "$SOURCE_S3_BUCKET" --profile source
+
+      - name: Create and secure destination bucket
+        run: |
+          if ! aws s3api head-bucket \
+            --bucket "$DESTINATION_S3_BUCKET" \
+            --profile destination 2>/dev/null; then
+            if [[ "$DESTINATION_AWS_REGION" == "us-east-1" ]]; then
+              aws s3api create-bucket \
+                --bucket "$DESTINATION_S3_BUCKET" \
+                --profile destination
+            else
+              aws s3api create-bucket \
+                --bucket "$DESTINATION_S3_BUCKET" \
+                --create-bucket-configuration "LocationConstraint=$DESTINATION_AWS_REGION" \
+                --profile destination
+            fi
+          fi
+
+          aws s3api put-public-access-block \
+            --bucket "$DESTINATION_S3_BUCKET" \
+            --public-access-block-configuration \
+              BlockPublicAcls=true,IgnorePublicAcls=true,BlockPublicPolicy=true,RestrictPublicBuckets=true \
+            --profile destination
+
+          aws s3api put-bucket-encryption \
+            --bucket "$DESTINATION_S3_BUCKET" \
+            --server-side-encryption-configuration \
+              '{"Rules":[{"ApplyServerSideEncryptionByDefault":{"SSEAlgorithm":"AES256"}}]}' \
+            --profile destination
+
+          aws s3api put-bucket-versioning \
+            --bucket "$DESTINATION_S3_BUCKET" \
+            --versioning-configuration Status=Enabled \
+            --profile destination
+
+          aws s3api put-bucket-ownership-controls \
+            --bucket "$DESTINATION_S3_BUCKET" \
+            --ownership-controls 'Rules=[{ObjectOwnership=BucketOwnerEnforced}]' \
+            --profile destination
+
+      - name: Grant temporary destination access
+        run: |
+          source_principal="$(aws sts get-caller-identity --profile source --query Arn --output text)"
+          prior_policy="$RUNNER_TEMP/destination-bucket-policy.json"
+
+          if aws s3api get-bucket-policy \
+            --bucket "$DESTINATION_S3_BUCKET" \
+            --profile destination \
+            --query Policy \
+            --output text > "$prior_policy" 2>/dev/null; then
+            base_policy="$(cat "$prior_policy")"
+            echo "DESTINATION_POLICY_EXISTED=true" >> "$GITHUB_ENV"
+          else
+            base_policy='{"Version":"2012-10-17","Statement":[]}'
+            echo "DESTINATION_POLICY_EXISTED=false" >> "$GITHUB_ENV"
+          fi
+
+          statement="$(jq -n \
+            --arg principal "$source_principal" \
+            --arg bucket_arn "arn:aws:s3:::$DESTINATION_S3_BUCKET" \
+            --arg objects_arn "arn:aws:s3:::$DESTINATION_S3_BUCKET/*" \
+            '{
+              Sid: "GitHubActionsS3Migration",
+              Effect: "Allow",
+              Principal: {AWS: $principal},
+              Action: [
+                "s3:GetBucketLocation",
+                "s3:ListBucket",
+                "s3:GetObject",
+                "s3:PutObject",
+                "s3:AbortMultipartUpload"
+              ],
+              Resource: [$bucket_arn, $objects_arn]
+            }')"
+
+          jq \
+            --argjson statement "$statement" \
+            '.Statement = ((.Statement | if type == "array" then . else [.] end) | map(select(.Sid != "GitHubActionsS3Migration")) + [$statement])' \
+            <<< "$base_policy" > "$RUNNER_TEMP/migration-bucket-policy.json"
+
+          aws s3api put-bucket-policy \
+            --bucket "$DESTINATION_S3_BUCKET" \
+            --policy "file://$RUNNER_TEMP/migration-bucket-policy.json" \
+            --profile destination
+          echo "DESTINATION_POLICY_CONFIGURED=true" >> "$GITHUB_ENV"
+
+      - name: Copy current objects
+        run: |
+          aws s3 sync \
+            "s3://$SOURCE_S3_BUCKET" \
+            "s3://$DESTINATION_S3_BUCKET" \
+            --source-region "$SOURCE_AWS_REGION" \
+            --region "$DESTINATION_AWS_REGION" \
+            --only-show-errors \
+            --profile source
+
+      - name: Verify object count and size
+        run: |
+          source_inventory="$(aws s3api list-objects-v2 \
+            --bucket "$SOURCE_S3_BUCKET" \
+            --profile source \
+            --output json \
+            | jq -r '[((.Contents // []) | length), ([.Contents[]?.Size] | add // 0)] | @tsv')"
+          destination_inventory="$(aws s3api list-objects-v2 \
+            --bucket "$DESTINATION_S3_BUCKET" \
+            --profile destination \
+            --output json \
+            | jq -r '[((.Contents // []) | length), ([.Contents[]?.Size] | add // 0)] | @tsv')"
+
+          echo "Source objects and bytes: $source_inventory"
+          echo "Destination objects and bytes: $destination_inventory"
+
+          if [[ "$source_inventory" != "$destination_inventory" ]]; then
+            echo "::error::Source and destination object counts or sizes differ." >&2
+            exit 1
+          fi
+
+      - name: Restore destination bucket policy
+        if: ${{ always() && env.DESTINATION_POLICY_CONFIGURED == 'true' }}
+        run: |
+          if [[ "$DESTINATION_POLICY_EXISTED" == "true" ]]; then
+            aws s3api put-bucket-policy \
+              --bucket "$DESTINATION_S3_BUCKET" \
+              --policy "file://$RUNNER_TEMP/destination-bucket-policy.json" \
+              --profile destination
+          else
+            aws s3api delete-bucket-policy \
+              --bucket "$DESTINATION_S3_BUCKET" \
+              --profile destination
+          fi
+
+  confirmation_failed:
+    if: ${{ inputs.confirmation != 'MIGRATE_S3' }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Reject migration request
+        run: |
+          echo "Migration aborted. Type MIGRATE_S3 to confirm the cross-account copy." >&2
+          exit 1

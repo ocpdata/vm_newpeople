@@ -15,7 +15,7 @@ Este repositorio administra:
 
 Fuera de alcance:
 
-- Provisionamiento de bucket S3 de documentos.
+- Administracion continua del bucket S3 de documentos.
 - Codigo fuente de la aplicacion NewPeople (vive en otro repositorio).
 
 ## Estructura
@@ -23,7 +23,7 @@ Fuera de alcance:
 ```text
 terraform/                 Stack de infraestructura
 scripts/                   Scripts de render y despliegue remoto
-.github/workflows/         infra-vm y destroy-environment
+.github/workflows/         Infraestructura, destruccion de VM y migracion S3
 ```
 
 ## Workflows
@@ -59,6 +59,28 @@ Validaciones obligatorias:
 - confirmation debe ser DELETE_VM.
 - terraform_workspace debe coincidir exactamente con vars.TFC_WORKSPACE.
   Si no coinciden, el job falla de forma segura sin destruir recursos.
+
+### migrate-s3
+
+Workflow manual e independiente para copiar las versiones actuales de los objetos entre cuentas AWS. Crea el bucket destino cuando no existe, habilita cifrado SSE-S3, versionado, bloqueo de acceso publico y ownership del bucket destino.
+
+La ejecucion requiere confirmation=`MIGRATE_S3`. El workflow concede temporalmente al usuario IAM de origen acceso al bucket destino, ejecuta `aws s3 sync` sin `--delete`, compara cantidad y tamano total de objetos, y restaura la politica previa del bucket destino.
+
+Variables:
+
+- SOURCE_S3_BUCKET: nombre del bucket en la cuenta origen.
+- SOURCE_AWS_REGION: region del bucket origen.
+- DESTINATION_S3_BUCKET: nombre globalmente unico para el bucket destino.
+- DESTINATION_AWS_REGION: region del bucket destino.
+
+Secrets:
+
+- SOURCE_AWS_ACCESS_KEY_ID y SOURCE_AWS_SECRET_ACCESS_KEY: credenciales de lectura de la cuenta origen.
+- AWS_ACCESS_KEY_ID y AWS_SECRET_ACCESS_KEY: credenciales existentes de la cuenta destino.
+
+La identidad de origen necesita `s3:ListBucket` y `s3:GetObject`. La identidad de destino necesita permisos para crear, consultar y configurar el bucket, administrar temporalmente su bucket policy, listar objetos y leerlos. Si el origen usa SSE-KMS, la identidad de origen tambien necesita `kms:Decrypt` sobre la clave.
+
+Este flujo no copia versiones historicas, delete markers, politicas, lifecycle, CORS ni notificaciones. No elimina objetos del bucket origen ni actualiza automaticamente las variables de almacenamiento de la aplicacion.
 
 ## Variables y secretos
 
