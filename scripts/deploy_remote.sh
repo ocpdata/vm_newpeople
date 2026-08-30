@@ -41,7 +41,28 @@ ${sql}
 EOF
 }
 
+database_table_exists() {
+  local table_name="$1"
+  local table_count
+
+  table_count="$(MYSQL_PWD="${db_password}" mysql \
+    --batch \
+    --skip-column-names \
+    --host="${db_host}" \
+    --port="${db_port}" \
+    --user="${db_user}" \
+    --execute="SELECT COUNT(*) FROM information_schema.tables WHERE table_schema = '${db_name}' AND table_name = '${table_name}';")"
+
+  [[ "${table_count}" == "1" ]]
+}
+
 ensure_proposal_schema_compatibility() {
+  if ! database_table_exists "users"; then
+    echo "Base schema is not initialized; skipping proposal schema compatibility."
+    echo "Run scripts/bootstrap_schema_manual.sh once after this deployment."
+    return 0
+  fi
+
   run_mysql_database_sql "
 CREATE TABLE IF NOT EXISTS proposal_templates (
   id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
