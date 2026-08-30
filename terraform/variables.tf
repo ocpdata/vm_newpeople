@@ -115,3 +115,9 @@ variable "db_skip_final_snapshot" {
   description = "Whether terraform destroy should skip taking a final snapshot."
   type        = bool
 }
+
+variable "db_snapshot_identifier" {
+  description = "Optional RDS snapshot ARN used only when creating the database during an explicit restore."
+  type        = string
+  default     = null
+}

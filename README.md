@@ -40,6 +40,8 @@ Inputs:
 
 - app_repository: repo de aplicacion a desplegar (default ocpdata/newpeople).
 - app_ref: branch, tag o SHA a desplegar (default main).
+- restore_rds_from_snapshot: habilita el reemplazo unico de RDS desde el snapshot configurado.
+- restore_confirmation: debe ser RESTORE_RDS_FROM_SNAPSHOT cuando la restauracion esta habilitada.
 
 Comportamiento relevante:
 
@@ -66,10 +68,12 @@ Infraestructura (plan/apply/destroy):
 
 - Variables generales: AWS_REGION, TFC_ORG, TFC_WORKSPACE, INSTANCE_TYPE.
 - Variables de red: VPC_CIDR=`10.90.0.0/16`, PUBLIC_SUBNET_CIDR=`10.90.1.0/24`, PRIVATE_SUBNET_1_CIDR=`10.90.10.0/24`, PRIVATE_SUBNET_2_CIDR=`10.90.20.0/24`.
-- Variables RDS: DB_INSTANCE_CLASS=`db.t4g.micro`, DB_ALLOCATED_STORAGE, DB_ENGINE_VERSION=`8.4.8`, DB_NAME=`newpeople_crm_dev`, DB_PORT, DB_MULTI_AZ, DB_PUBLICLY_ACCESSIBLE, DB_DELETION_PROTECTION=`false`, DB_SKIP_FINAL_SNAPSHOT=`true`.
+- Variables RDS: DB_INSTANCE_CLASS=`db.t4g.micro`, DB_ALLOCATED_STORAGE, DB_ENGINE_VERSION=`8.4.8`, DB_NAME=`newpeople_crm_dev`, DB_PORT, DB_MULTI_AZ, DB_PUBLICLY_ACCESSIBLE, DB_DELETION_PROTECTION=`false`, DB_SKIP_FINAL_SNAPSHOT=`true`, DB_SNAPSHOT_IDENTIFIER.
 - Secrets: AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY, TFC_TOKEN, SSH_KEY_PEM, DB_USER, DB_PASSWORD.
 
 Terraform crea la VPC, subnets y RDS en la primera ejecucion y los reutiliza en las siguientes mediante el mismo estado de TFC_WORKSPACE. SSH_KEY_PEM contiene el archivo PEM completo; el workflow deriva de el la clave publica que instala en la VM.
+
+Para reemplazar la RDS actual desde el snapshot, ejecutar infra-vm una sola vez con restore_rds_from_snapshot habilitado y restore_confirmation=`RESTORE_RDS_FROM_SNAPSHOT`. Esta operacion elimina primero la RDS administrada actualmente; con DB_SKIP_FINAL_SNAPSHOT=`true` no crea un snapshot final. En ejecuciones posteriores, dejar restore_rds_from_snapshot deshabilitado para conservar la instancia restaurada.
 
 Runtime de aplicacion (deploy):
 

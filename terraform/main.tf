@@ -160,15 +160,16 @@ resource "aws_db_subnet_group" "rds" {
 
 resource "aws_db_instance" "mysql" {
   identifier              = "${var.name_prefix}-mysql"
-  engine                  = "mysql"
-  engine_version          = var.db_engine_version
+  snapshot_identifier     = var.db_snapshot_identifier
+  engine                  = var.db_snapshot_identifier == null ? "mysql" : null
+  engine_version          = var.db_snapshot_identifier == null ? var.db_engine_version : null
   instance_class          = var.db_instance_class
   allocated_storage       = var.db_allocated_storage
   storage_type            = "gp3"
   storage_encrypted       = true
-  db_name                 = var.db_name
-  username                = var.db_username
-  password                = var.db_password
+  db_name                 = var.db_snapshot_identifier == null ? var.db_name : null
+  username                = var.db_snapshot_identifier == null ? var.db_username : null
+  password                = var.db_snapshot_identifier == null ? var.db_password : null
   port                    = var.db_port
   db_subnet_group_name    = aws_db_subnet_group.rds.name
   vpc_security_group_ids  = [aws_security_group.rds.id]
@@ -178,6 +179,10 @@ resource "aws_db_instance" "mysql" {
   skip_final_snapshot     = var.db_skip_final_snapshot
   backup_retention_period = 7
   apply_immediately       = true
+
+  lifecycle {
+    ignore_changes = [snapshot_identifier]
+  }
 
   tags = merge(local.common_tags, { Name = "${var.name_prefix}-mysql" })
 }
