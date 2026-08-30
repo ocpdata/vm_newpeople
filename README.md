@@ -40,8 +40,6 @@ Inputs:
 
 - app_repository: repo de aplicacion a desplegar (default ocpdata/newpeople).
 - app_ref: branch, tag o SHA a desplegar (default main).
-- restore_rds_from_snapshot: habilita el reemplazo unico de RDS desde el snapshot configurado.
-- restore_confirmation: debe ser RESTORE_RDS_FROM_SNAPSHOT cuando la restauracion esta habilitada.
 
 Comportamiento relevante:
 
@@ -54,11 +52,11 @@ Comportamiento relevante:
 
 ### destroy-environment
 
-Workflow manual destructivo para terraform destroy del workspace remoto.
+Workflow manual que elimina solamente la VM EC2 y su Elastic IP. Conserva VPC, subnets, Security Groups y RDS.
 
 Validaciones obligatorias:
 
-- confirmation debe ser DELETE_ENVIRONMENT.
+- confirmation debe ser DELETE_VM.
 - terraform_workspace debe coincidir exactamente con vars.TFC_WORKSPACE.
   Si no coinciden, el job falla de forma segura sin destruir recursos.
 
@@ -68,12 +66,10 @@ Infraestructura (plan/apply/destroy):
 
 - Variables generales: AWS_REGION, TFC_ORG, TFC_WORKSPACE, INSTANCE_TYPE.
 - Variables de red: VPC_CIDR=`10.90.0.0/16`, PUBLIC_SUBNET_CIDR=`10.90.1.0/24`, PRIVATE_SUBNET_1_CIDR=`10.90.10.0/24`, PRIVATE_SUBNET_2_CIDR=`10.90.20.0/24`.
-- Variables RDS: DB_INSTANCE_CLASS=`db.t4g.micro`, DB_ALLOCATED_STORAGE, DB_ENGINE_VERSION=`8.4.8`, DB_NAME=`newpeople_crm_dev`, DB_PORT, DB_MULTI_AZ, DB_PUBLICLY_ACCESSIBLE, DB_DELETION_PROTECTION=`false`, DB_SKIP_FINAL_SNAPSHOT=`true`, DB_SNAPSHOT_IDENTIFIER.
+- Variables RDS: DB_INSTANCE_CLASS=`db.t4g.micro`, DB_ALLOCATED_STORAGE, DB_ENGINE_VERSION=`8.4.8`, DB_NAME=`newpeople_crm_dev`, DB_PORT, DB_MULTI_AZ, DB_PUBLICLY_ACCESSIBLE, DB_DELETION_PROTECTION=`false`, DB_SKIP_FINAL_SNAPSHOT=`true`.
 - Secrets: AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY, TFC_TOKEN, SSH_KEY_PEM, DB_USER, DB_PASSWORD.
 
-Terraform crea la VPC, subnets y RDS en la primera ejecucion y los reutiliza en las siguientes mediante el mismo estado de TFC_WORKSPACE. SSH_KEY_PEM contiene el archivo PEM completo; el workflow deriva de el la clave publica que instala en la VM.
-
-Para reemplazar la RDS actual desde el snapshot, ejecutar infra-vm una sola vez con restore_rds_from_snapshot habilitado y restore_confirmation=`RESTORE_RDS_FROM_SNAPSHOT`. Esta operacion elimina primero la RDS administrada actualmente; con DB_SKIP_FINAL_SNAPSHOT=`true` no crea un snapshot final. En ejecuciones posteriores, dejar restore_rds_from_snapshot deshabilitado para conservar la instancia restaurada.
+Terraform crea la VPC, subnets y RDS cuando no existen y los reutiliza en las siguientes ejecuciones mediante el mismo estado de TFC_WORKSPACE. RDS usa `prevent_destroy`, por lo que cualquier plan que intente eliminarla o reemplazarla falla antes de aplicar cambios. SSH_KEY_PEM contiene el archivo PEM completo; el workflow deriva de el la clave publica que instala en la VM.
 
 Runtime de aplicacion (deploy):
 
@@ -118,7 +114,7 @@ El script remoto:
 ## Buenas practicas
 
 - Usar SHA fijo de app_ref para despliegues reproducibles.
-- Mantener DB_SKIP_FINAL_SNAPSHOT=true solo cuando el entorno sea efimero.
+- Para eliminar RDS deliberadamente se debe retirar primero `prevent_destroy` mediante un cambio de codigo revisado.
 - No reutilizar secretos de ejemplo en produccion.
 - Verificar que VITE_API_URL y APP_BASE_URL correspondan al endpoint expuesto al usuario final.
 - `DOCUMENT_STORAGE_S3_ENDPOINT` puede quedar vacio para S3 nativo de AWS.

@@ -13,15 +13,6 @@ on:
         required: true
         default: main
         type: string
-      restore_rds_from_snapshot:
-        description: Delete the current RDS instance and restore it from DB_SNAPSHOT_IDENTIFIER
-        required: true
-        default: false
-        type: boolean
-      restore_confirmation:
-        description: Type RESTORE_RDS_FROM_SNAPSHOT when restore_rds_from_snapshot is enabled
-        required: false
-        type: string
 
 permissions:
   contents: read
@@ -96,51 +87,6 @@ jobs:
 
       - name: Terraform validate
         run: terraform validate
-
-      - name: Restore RDS from snapshot
-        if: ${{ inputs.restore_rds_from_snapshot }}
-        env:
-          DB_SNAPSHOT_IDENTIFIER: ${{ vars.DB_SNAPSHOT_IDENTIFIER }}
-          RESTORE_CONFIRMATION: ${{ inputs.restore_confirmation }}
-        run: |
-          if [[ "$RESTORE_CONFIRMATION" != "RESTORE_RDS_FROM_SNAPSHOT" ]]; then
-            echo "::error::Type RESTORE_RDS_FROM_SNAPSHOT to confirm replacement of the current RDS instance." >&2
-            exit 1
-          fi
-
-          if [[ -z "$DB_SNAPSHOT_IDENTIFIER" ]]; then
-            echo "::error::Repository variable DB_SNAPSHOT_IDENTIFIER is required." >&2
-            exit 1
-          fi
-
-          snapshot_status="$(aws rds describe-db-snapshots \
-            --db-snapshot-identifier "$DB_SNAPSHOT_IDENTIFIER" \
-            --query 'DBSnapshots[0].Status' \
-            --output text)"
-          snapshot_storage="$(aws rds describe-db-snapshots \
-            --db-snapshot-identifier "$DB_SNAPSHOT_IDENTIFIER" \
-            --query 'DBSnapshots[0].AllocatedStorage' \
-            --output text)"
-
-          if [[ "$snapshot_status" != "available" ]]; then
-            echo "::error::RDS snapshot status is '$snapshot_status'; expected 'available'." >&2
-            exit 1
-          fi
-
-          if (( snapshot_storage > TF_VAR_db_allocated_storage )); then
-            echo "::error::Snapshot requires ${snapshot_storage} GiB, but DB_ALLOCATED_STORAGE is ${TF_VAR_db_allocated_storage} GiB." >&2
-            exit 1
-          fi
-
-          terraform destroy \
-            -input=false \
-            -auto-approve \
-            -target=aws_db_instance.mysql
-
-          TF_VAR_db_snapshot_identifier="$DB_SNAPSHOT_IDENTIFIER" terraform apply \
-            -input=false \
-            -auto-approve \
-            -target=aws_db_instance.mysql
 
       - name: Terraform plan
         run: terraform plan -input=false -out=tfplan

@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
     inputs:
       confirmation:
-        description: Type DELETE_ENVIRONMENT to confirm removal of the VM and RDS
+        description: Type DELETE_VM to confirm removal of the VM and Elastic IP
         required: true
         type: string
       terraform_workspace:
@@ -17,7 +17,7 @@ permissions:
 
 jobs:
   destroy:
-    if: ${{ inputs.confirmation == 'DELETE_ENVIRONMENT' && inputs.terraform_workspace == vars.TFC_WORKSPACE }}
+    if: ${{ inputs.confirmation == 'DELETE_VM' && inputs.terraform_workspace == vars.TFC_WORKSPACE }}
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -51,8 +51,8 @@ jobs:
 
       - name: Show destructive scope
         run: |
-          echo "This workflow destroys the full Terraform workspace state."
-          echo "Resources removed include the VPC, subnets, EC2 VM, elastic IP, security groups, and the RDS MySQL instance."
+          echo "This workflow destroys only the EC2 VM and its Elastic IP."
+          echo "The VPC, subnets, security groups, and RDS MySQL instance are preserved."
           echo "Target Terraform Cloud workspace: ${{ vars.TFC_WORKSPACE }}"
 
       - name: Setup Terraform
@@ -83,15 +83,21 @@ jobs:
             -input=false \
             -backend-config=backend.remote.tfbackend
 
-      - name: Terraform destroy
-        run: terraform destroy -input=false -auto-approve
+      - name: Destroy VM and Elastic IP
+        run: |
+          terraform destroy \
+            -input=false \
+            -auto-approve \
+            -target=aws_eip_association.vm \
+            -target=aws_eip.vm \
+            -target=aws_instance.vm
 
   confirmation_failed:
-    if: ${{ !(inputs.confirmation == 'DELETE_ENVIRONMENT' && inputs.terraform_workspace == vars.TFC_WORKSPACE) }}
+    if: ${{ !(inputs.confirmation == 'DELETE_VM' && inputs.terraform_workspace == vars.TFC_WORKSPACE) }}
     runs-on: ubuntu-latest
     steps:
       - name: Reject unsafe destroy request
         run: |
           echo "Destroy aborted."
-          echo "You must type DELETE_ENVIRONMENT and the exact Terraform workspace name (${{ vars.TFC_WORKSPACE }})." >&2
+          echo "You must type DELETE_VM and the exact Terraform workspace name (${{ vars.TFC_WORKSPACE }})." >&2
           exit 1
