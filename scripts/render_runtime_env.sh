@@ -152,3 +152,7 @@ if [[ "${waf_configured}" == "true" ]]; then
     write_pair "$var_name" "${!var_name}"
   done
 fi
+
+if [[ -n "${K6_CLOUD_TOKEN:-}" ]]; then
+  write_pair "K6_CLOUD_TOKEN" "$K6_CLOUD_TOKEN"
+fi

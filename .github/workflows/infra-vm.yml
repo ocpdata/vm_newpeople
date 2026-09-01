@@ -220,6 +220,7 @@ jobs:
       XC_NAMESPACE: ${{ vars.XC_NAMESPACE }}
       XC_LB_NAME: ${{ vars.XC_LB_NAME }}
       XC_WAF_MODE: ${{ vars.XC_WAF_MODE }}
+      K6_CLOUD_TOKEN: ${{ secrets.K6_CLOUD_TOKEN }}
     steps:
       - name: Checkout infrastructure repository
         uses: actions/checkout@v4
