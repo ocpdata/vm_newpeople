@@ -156,3 +156,7 @@ fi
 if [[ -n "${K6_CLOUD_TOKEN:-}" ]]; then
   write_pair "K6_CLOUD_TOKEN" "$K6_CLOUD_TOKEN"
 fi
+
+if [[ -n "${K6_CLOUD_STACK_ID:-}" ]]; then
+  write_pair "K6_CLOUD_STACK_ID" "$K6_CLOUD_STACK_ID"
+fi
