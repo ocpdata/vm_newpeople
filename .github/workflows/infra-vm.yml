@@ -222,6 +222,7 @@ jobs:
       XC_WAF_MODE: ${{ vars.XC_WAF_MODE }}
       K6_CLOUD_TOKEN: ${{ secrets.K6_CLOUD_TOKEN }}
       K6_CLOUD_STACK_ID: ${{ vars.K6_CLOUD_STACK_ID }}
+      K6_CLOUD_PROJECT_ID: ${{ vars.K6_CLOUD_PROJECT_ID }}
     steps:
       - name: Checkout infrastructure repository
         uses: actions/checkout@v4
