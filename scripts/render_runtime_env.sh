@@ -164,3 +164,23 @@ fi
 if [[ -n "${K6_CLOUD_PROJECT_ID:-}" ]]; then
   write_pair "K6_CLOUD_PROJECT_ID" "$K6_CLOUD_PROJECT_ID"
 fi
+
+if [[ -n "${GH_RATE_LIMIT_TOKEN:-}" ]]; then
+  write_pair "GH_RATE_LIMIT_TOKEN" "$GH_RATE_LIMIT_TOKEN"
+fi
+
+if [[ -n "${GITHUB_RATE_LIMIT_REPOSITORY:-}" ]]; then
+  write_pair "GITHUB_RATE_LIMIT_REPOSITORY" "$GITHUB_RATE_LIMIT_REPOSITORY"
+fi
+
+if [[ -n "${GITHUB_RATE_LIMIT_WORKFLOW:-}" ]]; then
+  write_pair "GITHUB_RATE_LIMIT_WORKFLOW" "$GITHUB_RATE_LIMIT_WORKFLOW"
+fi
+
+if [[ -n "${GH_RATE_LIMIT_CALLBACK_URL:-}" ]]; then
+  write_pair "GH_RATE_LIMIT_CALLBACK_URL" "$GH_RATE_LIMIT_CALLBACK_URL"
+fi
+
+if [[ -n "${SECURITY_TEST_CALLBACK_SECRET:-}" ]]; then
+  write_pair "SECURITY_TEST_CALLBACK_SECRET" "$SECURITY_TEST_CALLBACK_SECRET"
+fi

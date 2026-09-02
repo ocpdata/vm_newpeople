@@ -223,6 +223,11 @@ jobs:
       K6_CLOUD_TOKEN: ${{ secrets.K6_CLOUD_TOKEN }}
       K6_CLOUD_STACK_ID: ${{ vars.K6_CLOUD_STACK_ID }}
       K6_CLOUD_PROJECT_ID: ${{ vars.K6_CLOUD_PROJECT_ID }}
+      GH_RATE_LIMIT_TOKEN: ${{ secrets.GH_RATE_LIMIT_TOKEN }}
+      GITHUB_RATE_LIMIT_REPOSITORY: ${{ vars.GITHUB_RATE_LIMIT_REPOSITORY }}
+      GITHUB_RATE_LIMIT_WORKFLOW: ${{ vars.GITHUB_RATE_LIMIT_WORKFLOW }}
+      GH_RATE_LIMIT_CALLBACK_URL: ${{ vars.GH_RATE_LIMIT_CALLBACK_URL }}
+      SECURITY_TEST_CALLBACK_SECRET: ${{ secrets.SECURITY_TEST_CALLBACK_SECRET }}
     steps:
       - name: Checkout infrastructure repository
         uses: actions/checkout@v4
